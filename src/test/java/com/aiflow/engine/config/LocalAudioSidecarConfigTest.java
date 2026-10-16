@@ -84,6 +84,9 @@ class LocalAudioSidecarConfigTest {
         assertThat(properties.endpoint(properties.asrPath())).hasToString("http://localhost:19091/v1/asr");
         assertThat(properties.endpoint("tts")).hasToString("http://localhost:19091/v1/tts");
         assertThat(properties.endpoint("/tts?token=private")).isNull();
+        assertThat(new AudioSidecarProperties(true, "http://localhost:65536", "/asr", "/tts",
+                Duration.ofSeconds(2), Duration.ofSeconds(10), 1024, 1024, 1,
+                Duration.ZERO, 1).endpoint("/asr")).isNull();
     }
 
     private static String[] localProperties(String baseUrl, String asrPath, String ttsPath) {

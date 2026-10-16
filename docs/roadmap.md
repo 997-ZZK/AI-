@@ -214,7 +214,7 @@ reload 等 3584ms 让该调用跑完才关旧连接，run 仍 SUCCEEDED
 
 - [ ] 声纹 1:1 确认（CAM++/ECAPA-TDNN sidecar 或云 API）+ 访客权限矩阵；可插拔 provider，未配置时功能自动禁用
 - [ ] 本地大模型（vLLM/Ollama）全链路离线模式；本地 ASR/TTS 替代云服务
-- M5 第一批实现已完成可离线验证切片：M5-A 已加入 `offline` profile、loopback 出网门禁、未探活降级验证，以及用合成 loopback 桩跑通 local chat/embedding/RAG 成功路径；M5-B 已加入本地 sidecar 的厂商无关 SPI、装配门禁与 loopback 配置测试。定向测试与限制见 [`m5-validation.md`](m5-validation.md)；真实模型、真实 ASR/TTS 协议和声纹仍未验收。
+- M5 第一批实现已完成可离线验证切片：M5-A 已加入 `offline` profile、loopback 出网门禁、非法端口拒绝、未探活降级验证，以及用合成 loopback 桩跑通 local chat/embedding/RAG 成功路径；M5-B 已加入本地 sidecar 的厂商无关 SPI、装配门禁、`/v1` 路径保留和 TTS→ASR loopback 成功/非法响应测试。定向测试与限制见 [`m5-validation.md`](m5-validation.md)；真实模型、真实 ASR/TTS 协议和声纹仍未验收。
 - [x] 人工审批节点（超时/升级）与通知 —— **2026-09-22 提前在 M3 收尾阶段交付**（挂起/恢复、超时打回/放行/升级、待办与决策接口、随运行取消都已落地，实测见 M3 一节）；通知已交付 `log` + `webhook` 适配器（异步投递、提交后发、去重、失败只计数、出网过 SSRF 护栏），邮件/IM 明确不做
 
 验收：离线环境下核心对话链路可用；声纹识别失败有明确降级路径（访客模式）。

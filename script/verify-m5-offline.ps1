@@ -62,13 +62,13 @@ if ([string]::IsNullOrWhiteSpace($resolvedMaven)) {
 }
 $repo = Join-Path $env:USERPROFILE ".m2\repository"
 $settings = Join-Path $PSScriptRoot "maven-settings.xml"
-$tests = "OfflineProfileContractTest,OfflineProfileIntegrationTest,OfflineLoopbackE2eIntegrationTest"
+$tests = "OfflineProfileContractTest,OfflineProfileIntegrationTest,OfflineLoopbackE2eIntegrationTest,LocalAudioSidecarLoopbackIntegrationTest"
 
-Write-Host "M5-A offline profile checks: running $tests (offline Maven mode)"
+Write-Host "M5-A/B offline profile and local audio checks: running $tests (offline Maven mode)"
 & $resolvedMaven "-s" $settings "-o" "-Dmaven.repo.local=$repo" `
     "-Dmaven.compiler.fork=true" "-Dmaven.compiler.forceJavacCompilerUse=true" "-Dtest=$tests" test
 if ($LASTEXITCODE -ne 0) {
-    throw "M5-A offline profile checks failed with exit code $LASTEXITCODE"
+    throw "M5-A/B offline profile and local audio checks failed with exit code $LASTEXITCODE"
 }
 
-Write-Host "M5-A offline profile checks: PASS"
+Write-Host "M5-A/B offline profile and local audio checks: PASS"

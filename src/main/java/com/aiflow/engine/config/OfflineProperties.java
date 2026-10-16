@@ -53,7 +53,8 @@ public record OfflineProperties(
             String host = uri.getHost();
             if (scheme == null || host == null || !("http".equalsIgnoreCase(scheme)
                     || "https".equalsIgnoreCase(scheme)) || uri.getUserInfo() != null
-                    || uri.getQuery() != null || uri.getFragment() != null) {
+                    || uri.getQuery() != null || uri.getFragment() != null
+                    || uri.getPort() > 65535) {
                 return false;
             }
             // An enabled offline profile is an isolation boundary.  Do not allow a

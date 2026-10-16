@@ -27,6 +27,7 @@ class OfflineProfileContractTest {
         assertThat(guard.allows("local", "local", "file:///tmp/model")).isFalse();
         assertThat(guard.allows("local", "local", "http://secret@localhost:11434/v1")).isFalse();
         assertThat(guard.allows("local", "local", "http://localhost:11434/v1?token=secret")).isFalse();
+        assertThat(guard.allows("local", "local", "http://localhost:65536/v1")).isFalse();
         assertThat(new OfflineEgressGuard(new OfflineProperties(true, false,
                 List.of("api.example.test"))).allows("local", "local", "https://api.example.test/v1")).isFalse();
         assertThat(guard.allows("local", "local", "http://LOCALHOST:11434/v1")).isTrue();

@@ -55,6 +55,7 @@ public record AudioSidecarProperties(
         try {
             URI base = URI.create(baseUrl);
             if (base.getUserInfo() != null || base.getRawQuery() != null || base.getRawFragment() != null
+                    || base.getPort() > 65535
                     || !loopback(base) || !("http".equalsIgnoreCase(base.getScheme())
                     || "https".equalsIgnoreCase(base.getScheme()))) {
                 return null;
@@ -72,7 +73,8 @@ public record AudioSidecarProperties(
             // explicit directory form while retaining the loopback checks.
             String baseWithDirectoryPath = base.toString().endsWith("/") ? base.toString() : base + "/";
             URI endpoint = URI.create(baseWithDirectoryPath).resolve(relative);
-            return loopback(endpoint) && endpoint.getRawQuery() == null && endpoint.getRawFragment() == null
+            return loopback(endpoint) && endpoint.getPort() <= 65535
+                    && endpoint.getRawQuery() == null && endpoint.getRawFragment() == null
                     ? endpoint : null;
         } catch (RuntimeException ignored) {
             return null;
