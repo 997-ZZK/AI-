@@ -19,6 +19,8 @@
 - 全量测试：1134 条执行，0 失败，0 错误，6 条按开关跳过。
 - 离线打包：`BUILD SUCCESS`。
 
-GitHub hosted runner 的首次运行仍需在远端仓库建立后触发；本记录不把本地验证写成 hosted runner 已通过。
+本地首个提交已建立在 `feature/ci-pipeline`，提交为 `49fc3b2`，并已推送到用户提供的 GitHub 远端 `git@github.com:997-ZZK/AI-.git`。Git 提交身份为 `小蔡蔡 <997303152@qq.com>`。
 
-本地首个提交已建立在 `feature/ci-pipeline`，提交为 `49fc3b2`，并已推送到用户提供的 GitHub 远端 `git@github.com:997-ZZK/AI-.git`。Git 提交身份为 `小蔡蔡 <997303152@qq.com>`。本地验证不等同于 hosted runner 结果，远端首次 CI 运行需在 GitHub Actions 页面核对。
+## Hosted runner 结果
+
+2026-10-16 推送 `feature/ci-pipeline` 后，GitHub Actions 分支查询页面返回 `success`。该结果覆盖工作流中的 Java 21 测试与 Maven 打包步骤；没有启动真实 PostgreSQL、Redis、MinIO、Elasticsearch，也没有读取厂商凭证。

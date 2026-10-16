@@ -59,7 +59,7 @@ M4-3 的范围、切片顺序和验收见 `docs/m4-3-design.md`；B 契约见 `d
 - `docker compose up -d`（PostgreSQL 15432、Redis 16379，避开同机其他项目）
 - `mvn -q -DskipTests package` / `mvn test` / `mvn spring-boot:run`
 - 需要 JDK 21 与 Maven 3.9+（本机安装属于红线操作，先问用户）。
-- CI 已获用户授权并落地到 `.github/workflows/ci.yml`：GitHub Actions 使用 Java 21 + Maven cache，执行纯 mock/H2 的 `test` 与 `-DskipTests package`，真实数据库、Redis、MinIO、云厂商和凭证不纳入工作流；失败时上传 Surefire 报告。hosted runner 首次执行需先配置目标 remote 并提交到指定账号。
+- CI 已获用户授权并落地到 `.github/workflows/ci.yml`：GitHub Actions 使用 Java 21 + Maven cache，执行纯 mock/H2 的 `test` 与 `-DskipTests package`，真实数据库、Redis、MinIO、云厂商和凭证不纳入工作流；失败时上传 Surefire 报告。2026-10-16 推送到 GitHub 后首次 hosted runner 页面状态为 `success`。
 
 ## 测试约定
 
@@ -123,7 +123,7 @@ M4-3 的范围、切片顺序和验收见 `docs/m4-3-design.md`；B 契约见 `d
 ## 当前阶段边界（M4）
 
 - chat 流式响应超时与取消已按 `docs/chat-stream-timeout-design.md` 验收：复用端点 `timeoutMs`，仅修改 `integration/OpenAiCompatibleChatProvider` 和既有 integration 测试；计时器只关闭当前响应流，用户取消不记 provider 故障。定向 109 条、全量 1134 条（0 失败/错误、6 跳过）及离线打包通过，结果见 `docs/chat-stream-timeout-validation.md`。产物使用 `target/ops/chat-stream-timeout-20261016-*`，Maven 由根代理串行执行；不改配置/依赖/schema/凭证/CI，不访问真实厂商，不删除旧产物。
-- CI 工作流已获用户授权并新增 `.github/workflows/ci.yml`：Java 21 + Maven cache，纯 mock/H2 测试和打包，失败上传 Surefire 报告，不启用真实设施或厂商。本地首个提交已建立在 `feature/ci-pipeline`，已推送到 GitHub `997-ZZK/AI-`；hosted runner 的结果以 GitHub Actions 页面为准，约束与本地证据见 `docs/ci-validation.md`。
+- CI 工作流已获用户授权并新增 `.github/workflows/ci.yml`：Java 21 + Maven cache，纯 mock/H2 测试和打包，失败上传 Surefire 报告，不启用真实设施或厂商。本地首个提交已建立在 `feature/ci-pipeline`，已推送到 GitHub `997-ZZK/AI-`；2026-10-16 首次 hosted runner 页面状态为 `success`，约束与本地证据见 `docs/ci-validation.md`。
 - 厂商 `extra-body` 解析边界已按 `docs/endpoint-extra-body-design.md` 验收：生产范围仅 `integration/EndpointExtraBody`，测试扩展既有 integration 目录。新增 22 条测试，定向 129 条、全量 1130 条（0 失败/错误、6 跳过）与离线打包通过，结果见 `docs/endpoint-extra-body-validation.md`。产物放 `target/ops/endpoint-extra-body-20261015-*`，不改 YAML/凭证/依赖/schema/CI，不访问真实厂商，不清理旧产物。
 - 对象存储超时修复已按 `docs/storage-timeout-design.md` 验收：复用已有 `aiflow.storage.timeout`，仅修改 `storage/MinioObjectStorage` 的客户端构造/校验及 `StorageProperties` 的说明。离线 MinIO HTTP 桩放既有 `api` 测试目录；19 条新增测试、定向 78 条、全量 1108 条（0 失败/错误、6 跳过）及离线打包均通过，结果见 `docs/storage-timeout-validation.md`。产物使用 `target/ops/storage-timeout-20261015-*`，不改配置默认值、依赖、schema、凭证或 CI，不删除旧产物。
 - 文档入库错误边界已按 `docs/document-ingest-error-boundary.md` 实施并验收：解析/上传/对象存储与索引失败只保留固定分类，异常 message/cause/suppressed 不进 HTTP、文档失败记录和应用错误诊断。相关 59 条通过，全量 1089 条（0 失败/错误、6 跳过）及离线打包成功；测试 JVM 临时目录位于项目可写的 `target/ops/document-ingest-20261015-temp/`，不关闭 JUnit 清理。新增离线边界测试落既有 `api` / `ingest` 测试目录；MinIO SDK 桩测试复用 `api` 测试目录，不建新目录。独立 JAR、日志与只含统计/哈希的验证快照放既有 `target/ops/document-ingest-20261015-*`；不读取真实凭证、不访问厂商、不改配置/依赖/schema/CI/CD，不删除旧产物。维护时运行文档/OCR/存储定向、错误响应、RAG 端到端回归与离线打包；结果见 `docs/document-ingest-error-validation.md`。
