@@ -129,7 +129,35 @@ class LocalAudioSidecarLoopbackIntegrationTest {
         });
     }
 
+    @Test
+    void slowLocalTtsResponseMapsToFixedTimeout() {
+        server.createContext("/v1/tts", exchange -> {
+            try {
+                Thread.sleep(500);
+                reply(exchange, 200, "audio/wav", wav);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+        });
+
+        runner("100ms").run(context -> {
+            TtsProvider tts = context.getBean(TtsProvider.class);
+            AudioProviderException failure = catchThrowableOfType(
+                    () -> tts.synthesize(new TtsRequest("timeout", null, "wav", null)),
+                    AudioProviderException.class);
+
+            assertThat(failure).isNotNull();
+            assertThat(failure.reason()).isEqualTo(AudioProviderException.Reason.TIMEOUT);
+            assertThat(failure.getCause()).isNull();
+            assertThat(failure.toString()).doesNotContain("sidecar-private-response", "/v1/tts");
+        });
+    }
+
     private ApplicationContextRunner newRunner() {
+        return runner("2s");
+    }
+
+    private ApplicationContextRunner runner(String callTimeout) {
         return new ApplicationContextRunner()
                 .withUserConfiguration(PropertiesConfig.class, ProtocolConfig.class, AudioConfig.class)
                 .withPropertyValues(
@@ -145,7 +173,7 @@ class LocalAudioSidecarLoopbackIntegrationTest {
                         "aiflow.audio.local.base-url=" + base,
                         "aiflow.audio.local.asr-path=/asr",
                         "aiflow.audio.local.tts-path=/tts",
-                        "aiflow.audio.local.call-timeout=2s");
+                        "aiflow.audio.local.call-timeout=" + callTimeout);
     }
 
     @Configuration(proxyBeanMethods = false)
