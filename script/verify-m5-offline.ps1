@@ -62,7 +62,7 @@ if ([string]::IsNullOrWhiteSpace($resolvedMaven)) {
 }
 $repo = Join-Path $env:USERPROFILE ".m2\repository"
 $settings = Join-Path $PSScriptRoot "maven-settings.xml"
-$tests = "OfflineProfileContractTest,OfflineProfileIntegrationTest"
+$tests = "OfflineProfileContractTest,OfflineProfileIntegrationTest,OfflineLoopbackE2eIntegrationTest"
 
 Write-Host "M5-A offline profile checks: running $tests (offline Maven mode)"
 & $resolvedMaven "-s" $settings "-o" "-Dmaven.repo.local=$repo" `

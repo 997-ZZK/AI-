@@ -37,6 +37,7 @@
 | `AudioWorkflowIntegrationTest` | 2/2 |
 | `OfflineProfileContractTest` | 3/3 |
 | `OfflineProfileIntegrationTest` | 2/2 |
+| `OfflineLoopbackE2eIntegrationTest` | 3/3 |
 | 受影响音频与 M5 组合 | 54/54 |
 
 第一轮 M5 组合验证为 54/54；此前针对门禁、兼容构造器和 local 协议包装器收口的组合为 85/85。本轮加入真实 `offline` profile 启动验收后，扩展 M5 相关回归覆盖 20 个测试类、164 条用例（offline profile、local sidecar、能力接口、EndpointHealth、HTTP 音频协议与传输）：**164/164 通过**。
@@ -46,9 +47,10 @@
 - `git diff --check`
 - `script/verify-m5-offline.ps1` PowerShell 语法解析
 - `script/verify-m5-offline.ps1` UTF-8 BOM 检查
-- `script/verify-m5-offline.ps1` 实际执行：`OfflineProfileContractTest` 3/3 + `OfflineProfileIntegrationTest` 2/2，脚本 PASS
+- `script/verify-m5-offline.ps1` 实际执行：`OfflineProfileContractTest` 3/3 + `OfflineProfileIntegrationTest` 2/2 + `OfflineLoopbackE2eIntegrationTest` 3/3，脚本 PASS
 - Maven 编译、目标测试与 `-DskipTests package` 在已有缓存中 `BUILD SUCCESS`；生成的 jar 含 offline profile、出网门禁和 local 音频 SPI 类。
 - `OfflineProfileIntegrationTest` 实际激活 `offline` profile 并启动完整 Spring 上下文：远端 chat/embedding/知识库 provider 未装配；已配置但尚未完成首次探活的 loopback chat/embedding endpoint 初始报告为 `down/unavailable`，能力 API 与实际装配一致；探活成功后才恢复 `up`。
+- `OfflineLoopbackE2eIntegrationTest` 用本机静态 loopback 桩实际承接 OpenAI 兼容 chat/embedding 请求，完成 local chat、local embedding、RAG 入库/检索与能力报告验收；未访问真实模型或外网。
 - 离线门禁强制 loopback，不能通过 `loopback-only=false` 或远端 `allowed-hosts` 绕过；sidecar 的 `/v1` base path 会保留在 ASR/TTS endpoint 中。
 
 本轮使用本机已有的 JDK 21 与 Maven 3.9.16（仅通过命令行临时设置 `JAVA_HOME`，没有安装或修改系统配置）。最新全量 `mvn test` 共运行 1144 条，业务断言失败 0 条，但有 39 条在 JUnit 临时目录清理阶段因 Windows `AccessDeniedException` 报错，Maven 以 1 退出；这些错误集中在测试扩展收尾，不是 M5 测试失败。第一轮 M5 与受影响音频组合为 54/54，既有收口组合为 85/85，本轮扩展 M5 回归为 164/164。
