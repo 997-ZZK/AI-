@@ -17,7 +17,7 @@
 
 待补：
 - [x] 压测基线：mock 延迟模型 + Gatling 场景脚本，已由 M4-3C 阶段交付；各包的负载归属与失败边界见 `m4-3c-validation.md`。
-- [x] CI（2026-10-16）：已获授权并新增 `.github/workflows/ci.yml`，使用 Java 21 + Maven cache，执行纯 mock/H2 的测试与打包，失败上传 Surefire 报告；不启动真实数据库/Redis/MinIO、不访问厂商、不读取凭证。当前仓库尚无首个 commit/remote，hosted runner 首次执行待提交到指定远端，见 `docs/ci-validation.md`。
+- [x] CI（2026-10-16）：已获授权并新增 `.github/workflows/ci.yml`，使用 Java 21 + Maven cache，执行纯 mock/H2 的测试与打包，失败上传 Surefire 报告；不启动真实数据库/Redis/MinIO、不访问厂商、不读取凭证。本地首个提交已落在 `feature/ci-pipeline`，Gitee 远端与提交状态见 `docs/ci-validation.md`；hosted runner 首次执行待认证推送后触发。
 
 验收口径：
 1. `mvn test` 全绿（引擎算法为纯单测）。
