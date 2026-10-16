@@ -62,13 +62,13 @@ if ([string]::IsNullOrWhiteSpace($resolvedMaven)) {
 }
 $repo = Join-Path $env:USERPROFILE ".m2\repository"
 $settings = Join-Path $PSScriptRoot "maven-settings.xml"
-$test = "OfflineProfileContractTest"
+$tests = "OfflineProfileContractTest,OfflineProfileIntegrationTest"
 
-Write-Host "M5-A offline profile contract: running $test (offline Maven mode)"
+Write-Host "M5-A offline profile checks: running $tests (offline Maven mode)"
 & $resolvedMaven "-s" $settings "-o" "-Dmaven.repo.local=$repo" `
-    "-Dmaven.compiler.fork=true" "-Dmaven.compiler.forceJavacCompilerUse=true" "-Dtest=$test" test
+    "-Dmaven.compiler.fork=true" "-Dmaven.compiler.forceJavacCompilerUse=true" "-Dtest=$tests" test
 if ($LASTEXITCODE -ne 0) {
-    throw "M5-A offline profile contract failed with exit code $LASTEXITCODE"
+    throw "M5-A offline profile checks failed with exit code $LASTEXITCODE"
 }
 
-Write-Host "M5-A offline profile contract: PASS"
+Write-Host "M5-A offline profile checks: PASS"
