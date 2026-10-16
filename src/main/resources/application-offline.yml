@@ -1,0 +1,76 @@
+# M5-A：本机离线 profile。
+#
+# 使用：java -jar target/aiflow-engine-*.jar --spring.profiles.active=offline
+# 或设置 SPRING_PROFILES_ACTIVE=offline。该 profile 只允许 loopback HTTP provider，
+# 云端 chat、云端 embedding 与云端知识库均不会装配。模型服务（例如 Ollama/vLLM）由使用者
+# 在本机另行安装，未响应时能力报告会显示 unavailable，不会伪造 local 可用。
+spring:
+  config:
+    activate:
+      on-profile: offline
+
+aiflow:
+  offline:
+    enabled: true
+    # 离线 profile 强制 loopback；不提供远端放行开关，避免误把“离线”变成远端出网。
+    loopback-only: true
+    allowed-hosts:
+      - localhost
+      - 127.0.0.1
+      - '[::1]'
+      - '::1'
+  provider:
+    mode: auto
+    order:
+      - local
+      - mock
+    cheap-tiers:
+      - local
+      - mock
+    # 探活只访问 loopback，确保本地模型未启动时能力报告显示 unavailable，
+    # 不把“地址已配置”误报成“本地模型可用”。
+    probe:
+      enabled: true
+    endpoints:
+      local:
+        enabled: true
+        tier: local
+        base-url: ${AIFLOW_OFFLINE_LLM_BASE_URL:http://localhost:11434/v1}
+        model: ${AIFLOW_OFFLINE_LLM_MODEL:qwen2.5:1.5b}
+        api-key: ''
+        capabilities: [chat]
+      cloud:
+        enabled: false
+        base-url: ''
+        api-key: ''
+      ark:
+        enabled: false
+        base-url: ''
+        api-key: ''
+      qwen:
+        enabled: false
+        base-url: ''
+        api-key: ''
+      deepseek:
+        enabled: false
+        base-url: ''
+        api-key: ''
+  retrieval:
+    sources:
+      - local
+    cloud:
+      enabled: false
+      mode: disabled
+      base-url: ''
+      api-key: ''
+    embedding:
+      mode: ${AIFLOW_OFFLINE_EMBEDDING_MODE:http}
+      model: ${AIFLOW_OFFLINE_EMBEDDING_MODEL:bge-m3}
+      base-url: ${AIFLOW_OFFLINE_EMBEDDING_BASE_URL:http://localhost:11434/v1}
+      api-key: ''
+      tiers:
+        - id: local
+          enabled: true
+          base-url: ${AIFLOW_OFFLINE_EMBEDDING_BASE_URL:http://localhost:11434/v1}
+          model: ${AIFLOW_OFFLINE_EMBEDDING_MODEL:bge-m3}
+          api-key: ''

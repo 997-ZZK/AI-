@@ -276,6 +276,22 @@ class AudioConfigTest {
     }
 
     @Test
+    void compatibilityCapabilityConstructorPreservesEnabledCloudKnowledgeBaseAssumption() {
+        RetrievalProperties properties = cloudEnabledRetrievalProperties();
+        CapabilityRegistry compatibility = registry(properties, AudioProperties.defaults(), ports(null), ports(null));
+        CapabilityRegistry.Channel compatibilityChannel = channel(compatibility.report(), "cloud-knowledge-base");
+        assertThat(compatibilityChannel.status()).isEqualTo("ok");
+
+        CapabilityRegistry assembled = new CapabilityRegistry(
+                new ProviderRouter(List.of(new MockChatProvider(ProviderProperties.defaults())),
+                        ProviderProperties.defaults()),
+                new MockEmbeddingProvider("mock-embedding", 1024),
+                new HttpEndpointFactory(ProviderProperties.defaults(), new ObjectMapper()),
+                properties, AudioProperties.defaults(), ports(null), ports(null), List.of());
+        assertThat(channel(assembled.report(), "cloud-knowledge-base").status()).isEqualTo("unavailable");
+    }
+
+    @Test
     void unhealthyAssembledProviderIsUnavailable() {
         new ApplicationContextRunner().withUserConfiguration(PropertiesConfig.class)
                 .withBean(AsrProvider.class, () -> new AsrProvider() {
@@ -322,11 +338,25 @@ class AudioConfigTest {
 
     private static CapabilityRegistry registry(AudioProperties properties, ObjectProvider<AsrProvider> asr,
                                                 ObjectProvider<TtsProvider> tts) {
+        return registry(RetrievalProperties.defaults(), properties, asr, tts);
+    }
+
+    private static CapabilityRegistry registry(RetrievalProperties retrievalProperties, AudioProperties properties,
+                                                ObjectProvider<AsrProvider> asr, ObjectProvider<TtsProvider> tts) {
         ProviderProperties provider = ProviderProperties.defaults();
         ProviderRouter router = new ProviderRouter(List.of(new MockChatProvider(provider)), provider);
         return new CapabilityRegistry(router, new MockEmbeddingProvider("mock-embedding", 1024),
-                new HttpEndpointFactory(provider, new ObjectMapper()), RetrievalProperties.defaults(),
+                new HttpEndpointFactory(provider, new ObjectMapper()), retrievalProperties,
                 properties, asr, tts);
+    }
+
+    private static RetrievalProperties cloudEnabledRetrievalProperties() {
+        RetrievalProperties defaults = RetrievalProperties.defaults();
+        RetrievalProperties.Cloud cloud = new RetrievalProperties.Cloud(true, "http", "cloud", 0, 100,
+                "http://localhost:8000/v1", "", "default", 4_000);
+        return new RetrievalProperties(defaults.minScore(), defaults.topK(), defaults.minK(), defaults.maxK(),
+                defaults.cliffRatio(), defaults.mmrLambda(), defaults.mergeAdjacent(), defaults.sources(),
+                defaults.embeddingStore(), defaults.embedding(), cloud, defaults.ann());
     }
 
     private static CapabilityRegistry.Channel channel(CapabilityRegistry.CapabilityReport report, String name) {

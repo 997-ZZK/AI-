@@ -64,6 +64,20 @@ aiflow:
       sample-rate: ${AIFLOW_AUDIO_SAMPLE_RATE:16000}
       channels: ${AIFLOW_AUDIO_CHANNELS:1}
       bits-per-sample: ${AIFLOW_AUDIO_BITS_PER_SAMPLE:16}
+    # 本地 sidecar 仅提供 loopback 传输边界；请求/响应字段由 LocalAsrProtocol/LocalTtsProtocol bean 提供。
+    # 默认未配置，不能因为 mode=local 就假装能力可用。
+    local:
+      enabled: ${AIFLOW_AUDIO_LOCAL_ENABLED:false}
+      base-url: ${AIFLOW_AUDIO_LOCAL_BASE_URL:}
+      asr-path: ${AIFLOW_AUDIO_LOCAL_ASR_PATH:}
+      tts-path: ${AIFLOW_AUDIO_LOCAL_TTS_PATH:}
+      connect-timeout: ${AIFLOW_AUDIO_LOCAL_CONNECT_TIMEOUT:2s}
+      call-timeout: ${AIFLOW_AUDIO_LOCAL_CALL_TIMEOUT:10s}
+      max-request-bytes: ${AIFLOW_AUDIO_LOCAL_MAX_REQUEST_BYTES:5242880}
+      max-response-bytes: ${AIFLOW_AUDIO_LOCAL_MAX_RESPONSE_BYTES:5242880}
+      max-attempts: ${AIFLOW_AUDIO_LOCAL_MAX_ATTEMPTS:1}
+      retry-delay: ${AIFLOW_AUDIO_LOCAL_RETRY_DELAY:0s}
+      max-concurrent-calls: ${AIFLOW_AUDIO_LOCAL_MAX_CONCURRENT_CALLS:8}
   dispatch:
     enabled: ${AIFLOW_DISPATCH_ENABLED:true}
     worker-enabled: ${AIFLOW_DISPATCH_WORKER_ENABLED:true}

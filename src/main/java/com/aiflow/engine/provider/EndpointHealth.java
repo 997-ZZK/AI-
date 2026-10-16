@@ -47,6 +47,22 @@ public final class EndpointHealth {
     }
 
     /**
+     * Marks a newly configured endpoint as unverified until its first probe.
+     *
+     * <p>This is used by isolated profiles where a configured loopback URL must
+     * not be reported as available before the local service has answered once.
+     * Direct callers retain the historical optimistic state unless they opt in
+     * to this method.
+     */
+    public void markPending() {
+        if (enabled) {
+            up = false;
+            lastError = null;
+            circuitOpenUntil = null;
+        }
+    }
+
+    /**
      * 现在是否可以尝试调用：禁用 / 最近一次信号是故障 / 熔断打开，三者任一为 false。
      *
      * <p>为什么不只看熔断：探活每 15s 一次，它已经把「服务没起」这个事实拿到了。

@@ -7,6 +7,7 @@ import com.aiflow.engine.ingest.TextChunker;
 import com.aiflow.engine.integration.HttpEmbeddingProvider;
 import com.aiflow.engine.integration.HttpEndpointFactory;
 import com.aiflow.engine.integration.HttpKnowledgeBaseProvider;
+import com.aiflow.engine.integration.OfflineEgressGuard;
 import com.aiflow.engine.persistence.retrieval.JpaKnowledgeBaseCorpus;
 import com.aiflow.engine.persistence.retrieval.LocalRetrievalProvider;
 import com.aiflow.engine.persistence.retrieval.PgVectorEmbeddingStore;
@@ -60,8 +61,9 @@ public class RetrievalConfig {
 
     @Bean
     @ConditionalOnProperty(name = "aiflow.retrieval.embedding.mode", havingValue = "http")
-    public EmbeddingProvider httpEmbeddingProvider(RetrievalProperties properties, HttpEndpointFactory endpoints) {
-        return buildEmbeddingChain(properties.embedding(), endpoints);
+    public EmbeddingProvider httpEmbeddingProvider(RetrievalProperties properties, HttpEndpointFactory endpoints,
+                                                   OfflineProperties offlineProperties) {
+        return buildEmbeddingChain(properties.embedding(), endpoints, offlineProperties);
     }
 
     /**
@@ -71,6 +73,12 @@ public class RetrievalConfig {
      */
     static TieredEmbeddingProvider buildEmbeddingChain(RetrievalProperties.Embedding embedding,
                                                        HttpEndpointFactory endpoints) {
+        return buildEmbeddingChain(embedding, endpoints, OfflineProperties.disabled());
+    }
+
+    static TieredEmbeddingProvider buildEmbeddingChain(RetrievalProperties.Embedding embedding,
+                                                       HttpEndpointFactory endpoints,
+                                                       OfflineProperties offlineProperties) {
         List<RetrievalProperties.EmbeddingTier> configured = embedding.tiers().isEmpty()
                 ? List.of(new RetrievalProperties.EmbeddingTier("default", embedding.baseUrl(), embedding.model(),
                         embedding.apiKey(), true, embedding.timeoutMs()))
@@ -84,6 +92,12 @@ public class RetrievalConfig {
                 skipped.add(name);
                 continue;
             }
+            String tierKind = HttpEndpointFactory.classifyTier(tier.baseUrl());
+            OfflineEgressGuard egressGuard = new OfflineEgressGuard(offlineProperties);
+            if (!egressGuard.allows(name, tierKind, tier.baseUrl())) {
+                skipped.add(name + "(offline-egress)");
+                continue;
+            }
             String model = tier.model() == null || tier.model().isBlank() ? embedding.model() : tier.model();
             if (!model.equals(embedding.model())) {
                 throw new IllegalStateException("embedding 档位 " + name + " 的 model=" + model
@@ -92,6 +106,9 @@ public class RetrievalConfig {
             }
             long timeout = tier.timeoutMs() > 0 ? tier.timeoutMs() : embedding.timeoutMs();
             EndpointHealth health = endpoints.health("embedding:" + name, true);
+            if (offlineProperties.enabled() && endpoints.properties().probe().enabled()) {
+                health.markPending();
+            }
             endpoints.registerProbe("embedding:" + name, health, tier.baseUrl(), tier.apiKey(), model);
             tiers.add(new TieredEmbeddingProvider.Tier(name, HttpEndpointFactory.classifyTier(tier.baseUrl()),
                     // 这一层只负责产出向量，阈值（Embedding.minScore）由检索层读上层配置，传 -1 占位
@@ -100,7 +117,7 @@ public class RetrievalConfig {
                     health, tier.baseUrl()));
         }
         if (tiers.isEmpty()) {
-            throw new IllegalStateException("embedding.mode=http 但没有任何可用档位：检查 tiers 的 enabled / base-url");
+            throw new IllegalStateException("embedding.mode=http 但没有任何可用档位：检查 tiers 的 enabled / base-url/离线出网门禁");
         }
         if (!skipped.isEmpty()) {
             log.info("embedding 档位 {} 未启用（enabled=false 或 base-url 为空），当前链条只含 {}", skipped,
@@ -159,6 +176,7 @@ public class RetrievalConfig {
 
     @Bean
     @ConditionalOnProperty(name = "aiflow.retrieval.cloud.enabled", havingValue = "true")
+    @ConditionalOnProperty(name = "aiflow.offline.enabled", havingValue = "false", matchIfMissing = true)
     public RetrievalProvider cloudKnowledgeBaseProvider(RetrievalProperties properties,
                                                         EmbeddingProvider embeddingProvider,
                                                         DocumentChunkRepository chunkRepository) {

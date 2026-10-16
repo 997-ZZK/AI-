@@ -25,7 +25,8 @@ import java.util.concurrent.Executors;
         SkillToolProperties.class, SafetyProperties.class, BudgetProperties.class, IngestProperties.class,
         ToolPolicyProperties.class, ToolAuditProperties.class, ApprovalProperties.class,
         ApprovalNotifyProperties.class, AuthProperties.class, MemoryProperties.class,
-        LongMemoryProperties.class, DispatchProperties.class, AudioProperties.class})
+        LongMemoryProperties.class, DispatchProperties.class, AudioProperties.class,
+        AudioSidecarProperties.class, OfflineProperties.class})
 public class EngineConfig {
 
     @Bean(destroyMethod = "shutdown")

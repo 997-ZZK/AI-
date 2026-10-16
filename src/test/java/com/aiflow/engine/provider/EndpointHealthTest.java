@@ -17,6 +17,18 @@ class EndpointHealthTest {
     }
 
     @Test
+    void pendingEndpointStaysUnavailableUntilFirstSuccessfulProbe() {
+        EndpointHealth health = new EndpointHealth("local", true, 3, 30_000);
+
+        health.markPending();
+
+        assertThat(health.available()).isFalse();
+        assertThat(health.snapshot().state()).isEqualTo("down");
+        health.recordProbeSuccess();
+        assertThat(health.available()).isTrue();
+    }
+
+    @Test
     void consecutiveFailuresOpenCircuitUntilCooldownExpires() {
         EndpointHealth health = new EndpointHealth("cloud", true, 2, 200);
 

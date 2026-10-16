@@ -105,7 +105,8 @@ public class AudioService {
     }
 
     private static AudioOperations.Policy policy(AudioProperties properties) {
-        return new AudioOperations.Policy(properties.enabled(), properties.mockMode(),
+        return new AudioOperations.Policy(properties.enabled() && !properties.disabledMode()
+                && (properties.mockMode() || properties.localMode()), properties.mockMode(),
                 new AudioOperations.Channel(properties.asr().enabled(), properties.asr().provider(), properties.asr().model()),
                 new AudioOperations.Channel(properties.tts().enabled(), properties.tts().provider(), properties.tts().model()),
                 properties.limits().toAudioLimits());

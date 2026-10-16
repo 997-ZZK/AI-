@@ -102,7 +102,7 @@ public final class AudioOperations {
         }
         try {
             AsrProvider provider = asrProviders.get();
-            if (provider == null || !"mock".equals(provider.id()) || !provider.available()) {
+            if (provider == null || !matchesConfiguredProvider(policy.asr(), provider.id()) || !provider.available()) {
                 throw unavailable();
             }
             return provider;
@@ -120,7 +120,7 @@ public final class AudioOperations {
         }
         try {
             TtsProvider provider = ttsProviders.get();
-            if (provider == null || !"mock".equals(provider.id()) || !provider.available()) {
+            if (provider == null || !matchesConfiguredProvider(policy.tts(), provider.id()) || !provider.available()) {
                 throw unavailable();
             }
             return provider;
@@ -133,8 +133,17 @@ public final class AudioOperations {
     }
 
     private boolean selected(Channel channel) {
-        return policy.enabled() && policy.mockMode() && channel.enabled()
-                && "mock".equalsIgnoreCase(channel.provider());
+        if (!policy.enabled() || !channel.enabled() || channel.provider() == null) {
+            return false;
+        }
+        String configured = channel.provider().trim().toLowerCase(Locale.ROOT);
+        return (policy.mockMode() && "mock".equals(configured))
+                || (!policy.mockMode() && "local".equals(configured));
+    }
+
+    private static boolean matchesConfiguredProvider(Channel channel, String actualId) {
+        return actualId != null && channel.provider() != null
+                && channel.provider().equalsIgnoreCase(actualId);
     }
 
     public static String requireWavMediaType(String value) {

@@ -44,6 +44,11 @@ public record AudioProperties(
         return "disabled".equals(mode);
     }
 
+    /** 当前配置是否明确选择本地 sidecar 档。 */
+    public boolean localMode() {
+        return "local".equals(mode);
+    }
+
     public record Asr(
             @DefaultValue("true") boolean enabled,
             @DefaultValue("mock") String provider,

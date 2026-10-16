@@ -615,9 +615,11 @@ GET/PUT/DELETE `/api/v1/users/{userId}/profile` 返回状态与最近30天实时
 - D0 交付厂商无关的 mock 契约、同步请求/响应 DTO、脱敏异常和能力报告；厂商 HTTP contract stub 待真实协议确认后实施。配置使用独立 `aiflow.audio.*`，默认关闭；D0 只保存合法凭证环境变量名，不读取其值。
 - D0 默认 WAV/单声道/16kHz/16bit 未压缩 PCM/≤30 秒/≤5MiB，TTS 文本最多 2000 个 Unicode 码点。校验 RIFF 总长、块边界与 padding、唯一 fmt/data、byteRate/blockAlign、非空完整采样帧；时长向上取整到毫秒。音频不持久化、不进入会话消息、记忆或数据库表；mock TTS 生成静音 WAV 并按同一限制验证。
 - PCM 限制支持配置 1..192000Hz、1/2 声道、8/16/24/32bit，输入必须匹配所配参数。mock TTS 仅输出 16kHz/单声道/16bit 的 100..2000ms 静音，`voice` 不影响输出。`available()` 校验至少一个最小样本可行：ASR 为一个完整 PCM 帧，TTS 为 100ms/3244bytes；限制不足时报 `unavailable`，不保证所有请求通过。
-- 未启用、通道关闭、非 mock 模式或没有可用 provider bean 时，`GET /api/v1/capabilities` 的 `asr`/`tts` 通道为 `unavailable` 并说明原因；mock 状态明确标注 `mock`，不改变既有 L0-L3 对话/向量档位计算。能力可用性必须与实际装配的 provider 一致。
+- 未启用、通道关闭、非 mock/local 模式或没有可用 provider bean 时，`GET /api/v1/capabilities` 的 `asr`/`tts` 通道为 `unavailable` 并说明原因；mock 状态明确标注 `mock`，local 状态明确标注 `local`，不改变既有 L0-L3 对话/向量档位计算。能力可用性必须与实际装配的 provider 一致。
 - D1 已验收：同步 `POST /api/v1/audio/transcriptions`（multipart `file` → JSON ApiResponse）与 `POST /api/v1/audio/speech`（JSON `text`/可选 `voice`/`format` → WAV 二进制）已接入 mock 端口，详见 `m4-3d-plan.md` 与 `m4-3d-d1-validation.md`。model 取通道配置，两个成功响应均 no-store，TTS 元信息头校验格式/长度；错误统一固定信息的 JSON（400/413/415/502/503/504）。AudioValidationException 使用稳定 Reason，禁止匹配消息字符串分流。音频独立 5MiB 限长读取，不收紧图片/文档的全局 multipart 限额；Servlet 临时文件由容器清理。D2 才增加 `asr.transcribe` / `tts.speak` 节点和控制台；节点变量不得携带 byte[]/base64，真实厂商联调仅单样本，不进 Gatling。
 - 双向实时音频、本地 piper/CosyVoice、声纹和音频历史语义留到后续切片；语音按秒/字符独立计费，不自动折算为 token。
 - D2 两节点通过纯 Java 共享音频调用组件与 API 保持同一门禁/复验链。`tts.speak` 只写 `audioHandle`，`asr.transcribe` 只写 `transcript`；model 取配置，不发音频 DELTA。句柄绑定 runId，内存 TTL 5 分钟、64 条/32MiB；执行段终态、挂起、异常释放，30 秒扫描过期，关闭后拒绝迟到写入。检查点里的字符串句柄不能恢复音频，恢复段须重新合成。参数、输出与测试详见 `m4-3d-plan.md`。
 - 控制台独立一次性音频面板走 D1 API；`audio-roundtrip` 以既有文本输入验证 TTS→ASR 节点，并只返回文本。不增加外部音频工作流入队、音频下载、跨实例字节传输或持久化入口；音频和 browser Blob 不进入会话/附件/记忆。
+- M5-A 的 `offline` profile 通过 `OfflineEgressGuard` 强制把 chat 与 embedding 的 HTTP 端点限制在 loopback，关闭云端知识库 bean；本地模型未完成首次成功探活前能力报告为 `unavailable`，不把已配置地址当成可用模型。验证入口为 `script/verify-m5-offline.ps1`，不下载或提交模型文件。
+- M5-B 的本地 sidecar 只通过 `LocalAsrProtocol` / `LocalTtsProtocol` 提供厂商无关的请求/响应编码；`AudioConfig` 仅在显式 `mode=local`、loopback endpoint、通道 provider 和协议 bean 均配置时装配 JDK HTTP provider。缺少任一项或 endpoint 非 loopback 时能力保持 `unavailable`，不回退 mock，也不读取协议外的密钥或错误正文。
 - D0 新增 52 条测试；全量 687 条、0 失败、0 错误、1 条真实 embedding 校准跳过，离线打包成功。证据见 [`m4-3d-validation.md`](m4-3d-validation.md)；API、节点、真实厂商和负载验证不属于本次 D0 验收。

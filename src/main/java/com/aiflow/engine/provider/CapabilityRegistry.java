@@ -6,7 +6,9 @@ import com.aiflow.engine.config.RetrievalProperties;
 import com.aiflow.engine.config.AudioProperties;
 import com.aiflow.engine.integration.HttpEndpointFactory;
 import com.aiflow.engine.retrieval.EmbeddingProvider;
+import com.aiflow.engine.retrieval.RetrievalProvider;
 import com.aiflow.engine.retrieval.TieredEmbeddingProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.beans.factory.ObjectProvider;
 
@@ -45,11 +47,25 @@ public class CapabilityRegistry {
     private final AudioProperties audioProperties;
     private final ObjectProvider<AsrProvider> asrProviders;
     private final ObjectProvider<TtsProvider> ttsProviders;
+    private final List<RetrievalProvider> retrievalProviders;
+    private final boolean retrievalProviderAssemblyKnown;
 
+    @Autowired
     public CapabilityRegistry(ProviderRouter router, EmbeddingProvider embeddingProvider,
                               HttpEndpointFactory endpoints, RetrievalProperties retrievalProperties,
                               AudioProperties audioProperties, ObjectProvider<AsrProvider> asrProviders,
-                              ObjectProvider<TtsProvider> ttsProviders) {
+                              ObjectProvider<TtsProvider> ttsProviders,
+                              List<RetrievalProvider> retrievalProviders) {
+        this(router, embeddingProvider, endpoints, retrievalProperties, audioProperties, asrProviders,
+                ttsProviders, retrievalProviders, true);
+    }
+
+    private CapabilityRegistry(ProviderRouter router, EmbeddingProvider embeddingProvider,
+                               HttpEndpointFactory endpoints, RetrievalProperties retrievalProperties,
+                               AudioProperties audioProperties, ObjectProvider<AsrProvider> asrProviders,
+                               ObjectProvider<TtsProvider> ttsProviders,
+                               List<RetrievalProvider> retrievalProviders,
+                               boolean retrievalProviderAssemblyKnown) {
         this.router = router;
         this.embeddingProvider = embeddingProvider;
         this.endpoints = endpoints;
@@ -57,6 +73,17 @@ public class CapabilityRegistry {
         this.audioProperties = audioProperties;
         this.asrProviders = asrProviders;
         this.ttsProviders = ttsProviders;
+        this.retrievalProviders = retrievalProviders == null ? List.of() : List.copyOf(retrievalProviders);
+        this.retrievalProviderAssemblyKnown = retrievalProviderAssemblyKnown;
+    }
+
+    /** Compatibility constructor for provider/configuration unit tests. */
+    public CapabilityRegistry(ProviderRouter router, EmbeddingProvider embeddingProvider,
+                              HttpEndpointFactory endpoints, RetrievalProperties retrievalProperties,
+                              AudioProperties audioProperties, ObjectProvider<AsrProvider> asrProviders,
+                              ObjectProvider<TtsProvider> ttsProviders) {
+        this(router, embeddingProvider, endpoints, retrievalProperties, audioProperties,
+                asrProviders, ttsProviders, null, false);
     }
 
     public CapabilityReport report() {
@@ -123,7 +150,8 @@ public class CapabilityRegistry {
                                 activeVision == null ? "none" : activeVision.tier(), vision),
                         new Channel("embedding", channelStatus(embedding, firstAvailable(embedding)),
                                 providerId(firstAvailable(embedding)), tierOf(firstAvailable(embedding)), embedding),
-                        new Channel("cloud-knowledge-base", "ok",
+                        new Channel("cloud-knowledge-base",
+                                firstAvailable(cloudKb) == null ? "unavailable" : "ok",
                                 firstAvailable(cloudKb) == null ? null : "cloud-kb", "cloud", cloudKb),
                         asr.channel(), tts.channel()));
     }
@@ -131,8 +159,7 @@ public class CapabilityRegistry {
     private <T> AudioAvailability probeAudio(boolean channelEnabled, String configuredProvider,
                                              ObjectProvider<T> providers, Function<T, String> providerId,
                                              Predicate<T> available) {
-        if (!audioProperties.enabled() || !channelEnabled || !audioProperties.mockMode()
-                || !"mock".equalsIgnoreCase(configuredProvider)) {
+        if (!audioProperties.enabled() || !channelEnabled || !audioModeMatches(configuredProvider)) {
             return new AudioAvailability(false, false);
         }
         try {
@@ -140,7 +167,8 @@ public class CapabilityRegistry {
             if (provider == null) {
                 return new AudioAvailability(false, false);
             }
-            return new AudioAvailability(true, "mock".equals(providerId.apply(provider)) && available.test(provider));
+            return new AudioAvailability(true, configuredProvider.equalsIgnoreCase(providerId.apply(provider))
+                    && available.test(provider));
         } catch (RuntimeException ignored) {
             // Bean resolution and probe failures only affect this channel; external details stay private.
             return new AudioAvailability(true, false);
@@ -150,11 +178,11 @@ public class CapabilityRegistry {
     private AudioChannel audioChannel(String capability, boolean channelEnabled, String providerId,
                                       String model, String apiKeyEnv, AudioAvailability availability) {
         boolean enabled = audioProperties.enabled() && channelEnabled;
-        boolean mock = enabled && availability.available() && audioProperties.mockMode()
-                && "mock".equalsIgnoreCase(providerId);
-        String status = mock ? "mock" : "unavailable";
-        String activeProvider = mock ? providerId : null;
-        String activeTier = mock ? "mock" : "none";
+        boolean selected = enabled && availability.available() && audioModeMatches(providerId);
+        String mode = audioProperties.localMode() ? "local" : "mock";
+        String status = selected ? mode : "unavailable";
+        String activeProvider = selected ? providerId : null;
+        String activeTier = selected ? mode : "none";
         String detail;
         if (!audioProperties.enabled()) {
             detail = "未启用（aiflow.audio.enabled=false）";
@@ -162,30 +190,43 @@ public class CapabilityRegistry {
             detail = "通道已禁用（aiflow.audio." + capability + ".enabled=false）";
         } else if (audioProperties.disabledMode()) {
             detail = "音频模式已关闭（aiflow.audio.mode=disabled）";
-        } else if (!audioProperties.mockMode()) {
+        } else if (!audioProperties.mockMode() && !audioProperties.localMode()) {
             detail = "未配置可用的 " + capability + " provider（mode=" + audioProperties.mode()
                     + "，凭证变量名=" + apiKeyEnv + "）";
-        } else if (!"mock".equalsIgnoreCase(providerId)) {
-            detail = "mock 模式要求 provider=mock，当前为 " + providerId;
+        } else if (!audioModeMatches(providerId)) {
+            detail = mode + " 模式要求 provider=" + mode + "，当前为 " + providerId;
         } else if (!availability.present()) {
             detail = "未装配可用的 " + capability + " provider";
         } else if (!availability.available()) {
             detail = "已装配的 " + capability + " provider 当前不可用";
+        } else if (audioProperties.localMode()) {
+            detail = "本地 sidecar 音频能力（协议由本地配置提供；model=" + model + "）";
         } else {
             detail = "mock 音频能力（仅用于联调，不代表真实厂商能力；model=" + model + "）";
         }
-        Candidate candidate = new Candidate(providerId, mock ? "mock" : "none", mock,
-                enabled && !audioProperties.disabledMode(), model, detail, 0);
+        Candidate candidate = new Candidate(providerId, selected ? mode : "none", selected,
+                enabled && !audioProperties.disabledMode() && (audioProperties.mockMode() || audioProperties.localMode()),
+                model, detail, 0);
         return new AudioChannel(new Channel(capability, status, activeProvider, activeTier, List.of(candidate)));
     }
 
     private static void addAudioNotice(List<String> notices, AudioChannel audio) {
         if ("mock".equals(audio.channel().status())) {
             notices.add(audio.channel().channel() + " 当前由 mock 承接：仅用于联调，不代表真实厂商能力");
+        } else if ("local".equals(audio.channel().status())) {
+            notices.add(audio.channel().channel() + " 当前由本地 sidecar 承接：协议与模型由本机配置提供");
         } else {
             Candidate candidate = audio.channel().candidates().getFirst();
             notices.add(audio.channel().channel() + " 不可用：" + candidate.detail());
         }
+    }
+
+    private boolean audioModeMatches(String provider) {
+        if (provider == null) {
+            return false;
+        }
+        return (audioProperties.mockMode() && "mock".equalsIgnoreCase(provider))
+                || (audioProperties.localMode() && "local".equalsIgnoreCase(provider));
     }
 
     private List<Candidate> chatCandidates(Set<String> requiredCapabilities) {
@@ -232,8 +273,28 @@ public class CapabilityRegistry {
 
     private List<Candidate> cloudKnowledgeBaseCandidates() {
         RetrievalProperties.Cloud cloud = retrievalProperties.cloud();
-        return List.of(new Candidate("cloud-kb", "cloud", cloud.enabled(), cloud.enabled(), cloud.source(),
-                cloud.enabled() ? "已启用（mode=" + cloud.mode() + "）" : "未启用（aiflow.retrieval.cloud.enabled=false）", 0));
+        if (!cloud.enabled()) {
+            return List.of(new Candidate("cloud-kb", "cloud", false, false, cloud.source(),
+                    "未启用（aiflow.retrieval.cloud.enabled=false）", 0));
+        }
+        // Keep the lightweight seven-argument constructor useful for pure
+        // capability tests. Spring always supplies the actual provider list;
+        // an empty actual-provider list means the provider was not assembled
+        // and therefore must remain unavailable.
+        if (!retrievalProviderAssemblyKnown) {
+            return List.of(new Candidate("cloud-kb", "cloud", true, true, cloud.source(),
+                    "已启用（mode=" + cloud.mode() + "）", 0));
+        }
+        RetrievalProvider provider = retrievalProviders.stream()
+                .filter(candidate -> cloud.source().equals(candidate.source()))
+                .findFirst().orElse(null);
+        if (provider == null) {
+            return List.of(new Candidate("cloud-kb", "cloud", false, true, cloud.source(),
+                    "已配置但 cloud knowledge-base provider 未装配", 0));
+        }
+        boolean healthy = provider.healthy();
+        return List.of(new Candidate("cloud-kb", "cloud", healthy, true, cloud.source(),
+                healthy ? "已启用（mode=" + cloud.mode() + "）" : "已装配但当前不可用", 0));
     }
 
     private static String describe(HttpEndpointFactory.EndpointView view) {

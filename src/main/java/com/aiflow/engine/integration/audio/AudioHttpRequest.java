@@ -56,7 +56,8 @@ public record AudioHttpRequest(URI endpoint, String contentType, String accept,
         }
         String host = endpoint.getHost();
         return "http".equalsIgnoreCase(endpoint.getScheme())
-                && ("127.0.0.1".equals(host) || "[::1]".equals(host) || "::1".equals(host));
+                && ("localhost".equalsIgnoreCase(host) || "127.0.0.1".equals(host)
+                || "[::1]".equals(host) || "::1".equals(host));
     }
 
     private static void requireHeaderValue(String value, int maxLength) {

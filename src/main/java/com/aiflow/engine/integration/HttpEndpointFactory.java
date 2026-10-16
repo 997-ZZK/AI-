@@ -1,6 +1,7 @@
 package com.aiflow.engine.integration;
 
 import com.aiflow.engine.config.ProviderProperties;
+import com.aiflow.engine.config.OfflineProperties;
 import com.aiflow.engine.provider.ChatProvider;
 import com.aiflow.engine.provider.EndpointHealth;
 import com.aiflow.engine.provider.HealthProbe;
@@ -8,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -32,22 +34,41 @@ public class HttpEndpointFactory {
 
     private final ProviderProperties properties;
     private final ObjectMapper objectMapper;
+    private final OfflineEgressGuard egressGuard;
     private final Map<String, EndpointHealth> healthById = new ConcurrentHashMap<>();
     private final List<HealthProbe> probes = new CopyOnWriteArrayList<>();
     private final Map<String, ChatProvider> chatProviders = new LinkedHashMap<>();
     private final List<EndpointView> chatEndpoints = new ArrayList<>();
 
+    /** 供不启用 Spring 的 provider/路由测试使用，默认不启用离线门禁。 */
     public HttpEndpointFactory(ProviderProperties properties, ObjectMapper objectMapper) {
+        this(properties, objectMapper, OfflineProperties.disabled());
+    }
+
+    @Autowired
+    public HttpEndpointFactory(ProviderProperties properties, ObjectMapper objectMapper,
+                               OfflineProperties offlineProperties) {
         this.properties = properties;
         this.objectMapper = objectMapper;
+        this.egressGuard = new OfflineEgressGuard(offlineProperties);
         for (Map.Entry<String, ProviderProperties.Endpoint> entry : properties.endpoints().entrySet()) {
             String id = entry.getKey();
             ProviderProperties.Endpoint endpoint = entry.getValue();
-            EndpointHealth health = health(id, endpoint.enabled());
-            chatEndpoints.add(new EndpointView(id, endpoint.model(), endpoint.baseUrl(), endpoint.enabled(),
-                    endpoint.configured(), endpoint.capabilities(), endpoint.tier(), health));
+            String tier = endpointTier(endpoint);
+            boolean allowed = egressGuard.allows(id, tier, endpoint.baseUrl());
+            EndpointHealth health = health(id, endpoint.enabled() && allowed);
+            if (egressGuard.enabled() && endpoint.enabled() && allowed && endpoint.configured()
+                    && properties.probe().enabled()) {
+                health.markPending();
+            }
+            chatEndpoints.add(new EndpointView(id, endpoint.model(), endpoint.baseUrl(), endpoint.enabled() && allowed,
+                    endpoint.configured() && allowed, endpoint.capabilities(), endpoint.tier(), health));
             if (!endpoint.enabled()) {
                 log.info("provider endpoint {} 已禁用，跳过", id);
+                continue;
+            }
+            if (!allowed) {
+                log.info("provider endpoint {} 已被离线出网门禁跳过：{}", id, egressGuard.rejectionReason());
                 continue;
             }
             if (!endpoint.configured()) {
@@ -106,6 +127,10 @@ public class HttpEndpointFactory {
         return properties;
     }
 
+    public OfflineEgressGuard egressGuard() {
+        return egressGuard;
+    }
+
     /** 地址判档：localhost 家族算本地档。chat 端点与 embedding 档位共用同一判据。 */
     public static String classifyTier(String baseUrl) {
         if (baseUrl == null || baseUrl.isBlank()) {
@@ -115,6 +140,13 @@ public class HttpEndpointFactory {
         return normalized.contains("localhost") || normalized.contains("127.0.0.1") || normalized.contains("[::1]")
                 ? "local"
                 : "cloud";
+    }
+
+    private static String endpointTier(ProviderProperties.Endpoint endpoint) {
+        if (endpoint.tier() != null && !endpoint.tier().isBlank()) {
+            return endpoint.tier();
+        }
+        return classifyTier(endpoint.baseUrl());
     }
 
     public record EndpointView(String id, String model, String baseUrl, boolean enabled, boolean configured,
