@@ -21,4 +21,4 @@
 
 GitHub hosted runner 的首次运行仍需在远端仓库建立后触发；本记录不把本地验证写成 hosted runner 已通过。
 
-本地首个提交已建立在 `feature/ci-pipeline`，提交为 `49fc3b2`，远端按用户提供的账号配置为 `https://gitee.com/xiao-cai-cai/AIFlowEngine.git`。Git 提交身份为 `小蔡蔡 <997303152@qq.com>`。hosted runner 尚未执行，需在 Gitee 仓库存在且认证成功后由推送触发。
+本地首个提交已建立在 `feature/ci-pipeline`，提交为 `49fc3b2`，并已推送到用户提供的 GitHub 远端 `git@github.com:997-ZZK/AI-.git`。Git 提交身份为 `小蔡蔡 <997303152@qq.com>`。本地验证不等同于 hosted runner 结果，远端首次 CI 运行需在 GitHub Actions 页面核对。
