@@ -1,0 +1,76 @@
+{
+  "id": "approval-chat",
+  "name": "approval-chat",
+  "version": 1,
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "name": "开始"
+    },
+    {
+      "id": "receipt",
+      "type": "llm.chat",
+      "name": "受理回执",
+      "requires": ["chat"],
+      "params": {
+        "prompt": "用户提交了申请：「${input}」。用一句话回复：申请已受理，正在等待人工审批（不要承诺审批结果）。",
+        "fallback": "您的申请已提交，正在等待人工审批。"
+      },
+      "retry": {
+        "maxAttempts": 2,
+        "backoffMillis": 300
+      },
+      "timeoutSeconds": 60
+    },
+    {
+      "id": "approve",
+      "type": "approval",
+      "name": "人工审批",
+      "params": {
+        "title": "审批申请：${input}",
+        "detail": "受理回执：${reply}",
+        "assignees": "reviewer-a",
+        "waitSeconds": 600,
+        "onTimeout": "reject",
+        "maxLevel": 1,
+        "onExhausted": "reject",
+        "onReject": "fallback",
+        "fallback": "很抱歉，您的申请未通过审批。"
+      }
+    },
+    {
+      "id": "notify",
+      "type": "llm.chat",
+      "name": "结果通知",
+      "requires": ["chat"],
+      "params": {
+        "prompt": "审批结论是 ${approvalStatus}（审批人 ${approvalBy}）。请用一句话告知用户结果，语气自然。",
+        "fallback": "审批流程已结束。"
+      },
+      "retry": {
+        "maxAttempts": 2,
+        "backoffMillis": 300
+      },
+      "timeoutSeconds": 60
+    },
+    {
+      "id": "end",
+      "type": "end",
+      "name": "结束",
+      "params": {
+        "outputs": {
+          "reply": "reply",
+          "fallback": "fallback",
+          "approvalStatus": "approvalStatus"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {"from": "start", "to": "receipt"},
+    {"from": "receipt", "to": "approve"},
+    {"from": "approve", "to": "notify"},
+    {"from": "notify", "to": "end"}
+  ]
+}

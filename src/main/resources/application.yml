@@ -1,0 +1,549 @@
+spring:
+  application:
+    name: aiflow-engine
+  servlet:
+    multipart:
+      # 与 aiflow.attachments.max-bytes 对齐：容器先拦一道，应用层再按配置拦一道
+      max-file-size: 10MB
+      max-request-size: 12MB
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:15432}/${DB_NAME:aiflow}
+    username: ${DB_USER:aiflow}
+    password: ${DB_PASSWORD}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none
+  flyway:
+    enabled: true
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:16379}
+      password: ${REDIS_PASSWORD:}
+      timeout: ${AIFLOW_REDIS_TIMEOUT:2s}
+      connect-timeout: ${AIFLOW_REDIS_CONNECT_TIMEOUT:2s}
+
+server:
+  port: ${SERVER_PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+
+logging:
+  level:
+    root: INFO
+    com.aiflow.engine: DEBUG
+  pattern:
+    console: "%d{HH:mm:ss.SSS} %-5level [%X{traceId:-}] [%X{runId:-}] %logger{28} - %msg%n"
+
+aiflow:
+  # ASR/TTS 独立能力（D0 默认关闭；凭证只允许通过环境变量注入）
+  audio:
+    enabled: ${AIFLOW_AUDIO_ENABLED:false}
+    mode: ${AIFLOW_AUDIO_MODE:mock}
+    asr:
+      enabled: ${AIFLOW_AUDIO_ASR_ENABLED:true}
+      provider: ${AIFLOW_AUDIO_ASR_PROVIDER:mock}
+      model: ${AIFLOW_AUDIO_ASR_MODEL:mock-asr-1}
+      api-key-env: ${AIFLOW_AUDIO_ASR_API_KEY_ENV:AIFLOW_AUDIO_ASR_API_KEY}
+    tts:
+      enabled: ${AIFLOW_AUDIO_TTS_ENABLED:true}
+      provider: ${AIFLOW_AUDIO_TTS_PROVIDER:mock}
+      model: ${AIFLOW_AUDIO_TTS_MODEL:mock-tts-1}
+      api-key-env: ${AIFLOW_AUDIO_TTS_API_KEY_ENV:AIFLOW_AUDIO_TTS_API_KEY}
+    limits:
+      max-bytes: ${AIFLOW_AUDIO_MAX_BYTES:5242880}
+      max-duration: ${AIFLOW_AUDIO_MAX_DURATION:30s}
+      sample-rate: ${AIFLOW_AUDIO_SAMPLE_RATE:16000}
+      channels: ${AIFLOW_AUDIO_CHANNELS:1}
+      bits-per-sample: ${AIFLOW_AUDIO_BITS_PER_SAMPLE:16}
+  dispatch:
+    enabled: ${AIFLOW_DISPATCH_ENABLED:true}
+    worker-enabled: ${AIFLOW_DISPATCH_WORKER_ENABLED:true}
+    workers: ${AIFLOW_DISPATCH_WORKERS:16}
+    poll-ms: ${AIFLOW_DISPATCH_POLL_MS:200}
+    lease: ${AIFLOW_DISPATCH_LEASE:30s}
+    recovery-batch-size: 50
+  events:
+    mode: ${AIFLOW_EVENTS_MODE:memory}
+    max-entries: ${AIFLOW_EVENTS_MAX_ENTRIES:2000}
+    retention: ${AIFLOW_EVENTS_RETENTION:24h}
+    read-block: 1s
+    read-batch-size: 256
+    read-retry-limit: 3
+    sse-queue-capacity: 2048
+  # 文档解析（PDF / 图片 OCR）。两件事的默认值刻意不同：
+  # PDF 文本层提取不要钱、不要模型，永远开着；OCR 要调多模态模型（按页计费），默认关。
+  # 开启：AIFLOW_OCR_ENABLED=true（并确保有具备 vision 能力的档位，如云端 VL 模型）。
+  ingest:
+    max-bytes: ${AIFLOW_INGEST_MAX_BYTES:20971520}
+    max-pages: ${AIFLOW_INGEST_MAX_PAGES:300}
+    ocr:
+      enabled: ${AIFLOW_OCR_ENABLED:false}
+      # 一页文本层少于这个字数就当扫描件：残页眉/残脚脚不如按扫描页处理
+      min-page-text-chars: ${AIFLOW_OCR_MIN_PAGE_TEXT_CHARS:40}
+      # 单文档最多 OCR 多少页（超过直接失败，不做静默截断）
+      max-pages: ${AIFLOW_OCR_MAX_PAGES:10}
+      dpi: ${AIFLOW_OCR_DPI:150}
+  # 原件留存（S3 兼容 / MinIO）：把上传的 PDF、图片原件整份存进对象存储，库里只记 key 与字节数。
+  # 默认关 —— 不开也能完整跑通入库与检索，只是回溯时"只有切片、没有原件"。
+  # 开了之后留存失败也**不阻断入库**（WARN + object_key 留空，响应里直接可见）；凭证只从环境变量来。
+  storage:
+    enabled: ${AIFLOW_STORAGE_ENABLED:false}
+    endpoint: ${AIFLOW_STORAGE_ENDPOINT:http://localhost:19000}
+    bucket: ${AIFLOW_STORAGE_BUCKET:aiflow-originals}
+    access-key: ${AIFLOW_STORAGE_ACCESS_KEY:}
+    secret-key: ${AIFLOW_STORAGE_SECRET_KEY:}
+    timeout: ${AIFLOW_STORAGE_TIMEOUT:10s}
+  safety:
+    enabled: true
+    max-input-chars: 4000
+    max-output-chars: 8000
+    rejected-reply: "抱歉，这条内容没有通过内容安全审核，已为你拦截。"
+    # 示例词表：真实词表请用 keywords-file 外置（一行一个，# 开头为注释），别把上千条塞进 yml
+    keywords:
+      - 制作炸弹
+      - 买卖毒品
+      - 自杀方法
+    keywords-file: ${AIFLOW_SAFETY_KEYWORDS_FILE:}
+    # 违规模式：提示词注入与越狱句式（输入侧与输出侧同规则）
+    patterns:
+      - "忽略(之前|上面)(的)?(所有)?指令"
+      - "(?i)ignore (all )?previous instructions"
+    # 流式增量审核：SSE 片段在被推送之前先过一遍规则，命中的内容不会先推给用户再撤回。
+    # hold-back-chars 是保留窗口的**下限**（最近 N 个字符先不发，等下一批片段一起检查）。
+    # auto-window=true（默认）时窗口自动抬到「hold-back-chars 与最长敏感词长度」的较大值 ——
+    # 词表里放一个比窗口长的词等于留了一条「先推送、后拦截」的缝，自动抬高按词表实际情况把缝补上。
+    # 真正生效的窗口 = 承诺能在推送前拦住的命中长度上限；max-auto-window 是自动抬高的上限，
+    # 用来挡病态词条（有人往词表里粘了一整段话）：超过上限的部分只保证到上限，启动时会记 WARN，不静默。
+    streaming:
+      enabled: ${AIFLOW_SAFETY_STREAMING_ENABLED:true}
+      hold-back-chars: ${AIFLOW_SAFETY_HOLD_BACK_CHARS:32}
+      auto-window: ${AIFLOW_SAFETY_AUTO_WINDOW:true}
+      max-auto-window: ${AIFLOW_SAFETY_MAX_AUTO_WINDOW:200}
+  budget:
+    # 每用户每日 token 额度。按用户算而不是按会话算：按会话算，换个会话就能续命。
+    enabled: ${AIFLOW_BUDGET_ENABLED:true}
+    per-user-daily-tokens: ${AIFLOW_BUDGET_PER_USER_DAILY_TOKENS:200000}
+    # 软阈值：达到后本用户的新请求优先便宜档位（见 provider.cheap-tiers），降级但不中断
+    soft-threshold-ratio: 0.8
+    # 跨天重置口径：写死时区，别跟着机器漂
+    reset-zone: ${AIFLOW_BUDGET_RESET_ZONE:Asia/Shanghai}
+    exhausted-reply: "今日 AI 用量已达上限，请明天再试或联系管理员。"
+    # memory = 单实例计数（默认）；redis = 多实例共享（Redis 不可用时退化为进程内计数，不阻断对话）
+    store: ${AIFLOW_BUDGET_STORE:memory}
+  tools:
+    # 工具调用默认全关：打开就等于允许引擎主动出网，必须是显式选择
+    enabled: ${AIFLOW_TOOLS_ENABLED:false}
+    timeout-ms: 5000
+    max-body-bytes: 65536
+    max-calls-per-run: 8
+    # 同一（工具 + 入参）指纹重复超过该次数即判定为工具循环，中止运行
+    loop-threshold: 3
+    # host 白名单：只有列在这里的 host 能被调用（支持 *.example.com 通配子域）
+    allow-hosts: ${AIFLOW_TOOLS_ALLOW_HOSTS:}
+    # 允许解析到内网/回环地址的 host（默认空 = 内网地址一律拒绝，防 SSRF）
+    allow-private-hosts: ${AIFLOW_TOOLS_ALLOW_PRIVATE_HOSTS:}
+    allow-ports: [80, 443]
+    registry:
+      # 演示：调用本机自身的能力接口（属内网调用）。默认关闭；
+      # 打开需要三件事同时到位：enabled=true + allow-hosts 含 localhost + allow-private-hosts 含 localhost
+      demo-internal:
+        enabled: ${AIFLOW_TOOL_DEMO_ENABLED:false}
+        description: "读取本机 /api/v1/capabilities（演示内网工具，不产生外部流量）"
+        method: GET
+        url: ${AIFLOW_TOOL_DEMO_URL:http://localhost:8080/api/v1/capabilities}
+    # 工具来源之二：MCP 服务端。它会**拉起本地进程或带凭证对外发请求**，所以有独立的来源闸（默认关）。
+    # 接入有两条路，都是「改配置即可」，不用改代码：
+    #   1) servers：直接在这里声明；
+    #   2) imports：指向本机已有 Agent 的配置（Codex 的 config.toml、Claude 的 .mcp.json / .claude.json），
+    #      引擎启动时把里面的 mcpServers 抽出来 —— 以后在那边加服务端，这边不用再抄一遍。
+    # 三种传输形态，用 command 与 url 二选一（拿不准就写 transport，不要靠猜）：
+    #   command        = stdio（本地子进程）；
+    #   url + 默认      = Streamable HTTP（远程单端点 POST，响应可以是 JSON 或 SSE 流）；
+    #   url + sse      = 老式 SSE 双端点（GET 建常驻流，服务端用 event: endpoint 下发投递地址；
+    #                    Claude 配置里的 type: "sse" 就是这种）。
+    # 远程形态要过 aiflow.tools.allow-hosts / allow-ports / allow-private-hosts 那套出网白名单，
+    # 且凭证只写“环境变量名”（auth-token-env / oauth.*-env）或 headers 里的 ${VAR} 占位符，明文密钥不进 yml。
+    mcp:
+      enabled: ${AIFLOW_MCP_ENABLED:false}
+      id-prefix: "mcp."
+      startup-timeout-ms: 20000
+      call-timeout-ms: 30000
+      # 热更新时等在途调用退场的上限；等超时就异步强关旧连接并留 WARN（不让一次 reload 挂住）
+      drain-timeout-ms: 5000
+      servers: []
+        # 示例一（stdio，本机 Codex 的 node_repl 就是这么接的）：
+        # - id: node-repl
+        #   command: C:\Users\<you>\AppData\Local\OpenAI\Codex\runtimes\cua_node\<hash>\bin\node_repl.exe
+        #   args: []
+        #   pass-through-env: [CODEX_HOME]
+        #   allowed-tools: []            # 空 = 放行该服务端 tools/list 回来的全部工具
+        # 示例二（Streamable HTTP，凭证来自环境变量 AIFLOW_MCP_DEMO_TOKEN）：
+        # - id: remote-demo
+        #   url: https://mcp.example.com/mcp
+        #   auth-token-env: AIFLOW_MCP_DEMO_TOKEN
+        #   headers:
+        #     X-Tenant: "${AIFLOW_MCP_DEMO_TENANT:-public}"
+        #   allowed-tools: [search]
+        # 示例三（老式 SSE 双端点 + OAuth 动态令牌；客户端凭证与刷新令牌都只写变量名）：
+        # - id: legacy-demo
+        #   url: https://mcp.example.com/sse
+        #   transport: sse
+        #   oauth:
+        #     token-url: https://auth.example.com/oauth/token
+        #     client-id-env: AIFLOW_MCP_CLIENT_ID
+        #     client-secret-env: AIFLOW_MCP_CLIENT_SECRET
+        #     refresh-token-env: AIFLOW_MCP_REFRESH_TOKEN   # 配了它走 refresh_token，否则 client_credentials
+        #     scope: mcp.read
+        #     early-refresh-seconds: 60
+        # 热更新：POST /api/v1/tools/reload 会先装新连接、等在途调用退场（drain-timeout-ms）再关旧的。
+      imports:
+        - path: ${AIFLOW_MCP_IMPORT_CODEX_CONFIG:~/.codex/config.toml}
+          format: codex-toml
+          id-prefix: codex-
+        - path: ${AIFLOW_MCP_IMPORT_CLAUDE_CONFIG:~/.claude.json}
+          format: claude-json
+          id-prefix: claude-
+    # 工具粒度授权：enabled 管"引擎能不能调工具"，policy 管"这个人能不能调这个工具"。
+    # 规则按顺序匹配、首个命中生效；用户匹配支持 * 通配，deny-users 优先于 allow-users。
+    # 默认 default-allow=true（不加规则 = 保持现状），收紧时先加一条 tool: "*" 的兜底规则再逐条放开。
+    policy:
+      default-allow: ${AIFLOW_TOOL_DEFAULT_ALLOW:true}
+      require-user: ${AIFLOW_TOOL_REQUIRE_USER:false}
+      rules: []
+        # 示例：只允许某几个人用写操作类工具，其余人只能读
+        # - tool: "mcp.filesystem.write_*"
+        #   allow-users: ["<userId>"]
+        #   reason: "写文件属于受限操作"
+    # 调用审计三条腿：内存环形缓冲（此刻能查）+ INFO 日志（logger 名 aiflow.audit）+ 落库（跨重启追溯）。
+    # 查询优先走库，库不可用时自动回退缓冲，响应里的 store 字段会写明数据来源。
+    # 查：GET /api/v1/tools/audit?userId=&toolId=&outcome=&limit=
+    audit:
+      enabled: ${AIFLOW_TOOL_AUDIT_ENABLED:true}
+      max-entries: ${AIFLOW_TOOL_AUDIT_MAX_ENTRIES:1000}
+      # 落库留痕（表 tool_audit_events）。写入异步、失败只计数不阻断工具调用；关掉就只剩内存缓冲 + 日志。
+      persist: ${AIFLOW_TOOL_AUDIT_PERSIST:true}
+      # 写库队列长度：满了丢**最老的**（近期记录更值得留），丢了多少会计数并暴露在 /tools/audit
+      queue-size: ${AIFLOW_TOOL_AUDIT_QUEUE_SIZE:2048}
+      # 保留天数，<=0 表示不清理。审计要留得比工单久一点，但不必永久
+      retention-days: ${AIFLOW_TOOL_AUDIT_RETENTION_DAYS:30}
+      # 清理间隔（由写入线程顺带执行，不引入新调度器）
+      purge-interval-minutes: ${AIFLOW_TOOL_AUDIT_PURGE_INTERVAL_MINUTES:360}
+    # 工具来源之三：本机技能库（SKILL.md，Codex / Claude 的技能目录格式）。
+    # 只读本地文件：不出网、不起进程，但仍然受 tools.enabled 总闸约束（统一「引擎能调工具」的心智模型）。
+    # 暴露 skill.list / skill.read 两个工具，而不是「一个技能一个工具」——见 SkillCatalog 的说明。
+    skills:
+      enabled: ${AIFLOW_SKILLS_ENABLED:false}
+      # 前面的根目录优先（同名技能以先出现的为准）
+      roots:
+        - ${AIFLOW_SKILLS_ROOT_AGENTS:~/.agents/skills}
+        - ${AIFLOW_SKILLS_ROOT_CLAUDE:~/.claude/skills}
+        - ${AIFLOW_SKILLS_ROOT_CLAUDE_ASU:~/.claude/asu-skills/skills}
+        - ${AIFLOW_SKILLS_ROOT_CODEX:~/.codex/skills}
+        - ${AIFLOW_SKILLS_ROOT_CODEX_PLUGINS:~/.codex/plugins/cache}
+        - ${AIFLOW_SKILLS_ROOT_CLAUDE_PLUGINS:~/.claude/plugins/cache}
+      max-body-chars: 20000
+      max-list-entries: 50
+      # 插件缓存里 SKILL.md 位于 <cache>/<vendor>/<plugin>/<version>/skills/<name>/SKILL.md，需要 6 层
+      max-depth: 6
+  attachments:
+    # 上传图片的落盘目录（相对进程工作目录）。内容在磁盘、元数据写同名 sidecar json：
+    # 现阶段附件只服务「一次运行里的图片输入」，建表要连带处理删除/归档生命周期，暂无消费者。
+    dir: ${AIFLOW_ATTACHMENT_DIR:data/attachments}
+    max-bytes: ${AIFLOW_ATTACHMENT_MAX_BYTES:10485760}
+    max-per-request: 4
+  engine:
+    max-steps: 50
+    default-node-timeout-seconds: 60
+    default-max-attempts: 2
+    default-backoff-millis: 200
+    session-queue-capacity: 1000
+    sse-timeout-ms: 1800000
+    sse-heartbeat-ms: 15000
+    default-workflow: basic-chat
+    demo-workflows:
+      - basic-chat
+      - rag-chat
+      - vision-chat
+      - approval-chat
+    fallback-reply: "抱歉，任务多次尝试仍未成功，请稍后再试或换个问法。"
+    event-buffer-size: 2000
+    session:
+      redis-lock-enabled: ${AIFLOW_REDIS_LOCK_ENABLED:false}
+      lock-ttl-ms: ${AIFLOW_REDIS_LOCK_TTL_MS:30000}
+  provider:
+    # auto = 按 order 分级路由；mock = 强制只用 mock（压测与单测用）
+    mode: auto
+    # order 就是分级顺序：靠前的先选，调用失败自动退到下一档。
+    # 去掉 mock 即「宁可不答也不假装答」：真实档位全挂时直接给预设话术。
+    order:
+      # 质量优先：云端模型明显强于本机 1.5B（同一个 RAG 提问，本地答「资料中没有」、云端能正确引用；
+      # 实测见 README「本地对话档」）。本地档留在链上做兜底，断网时自动顶上。
+      # 想离线优先就把两行换回来：local 在前、cloud 在后。
+      - cloud
+      - local
+      - mock
+    # 便宜档位：用户用量进入软阈值后，这些档位被提到前面（降级而不是中断）
+    cheap-tiers:
+      - local
+      - mock
+    # 本地兜底（Ollama 的 OpenAI 兼容端点）。默认开着：没装 Ollama 时探活会失败，
+    # 能力接口会明确显示 local 档 down，请求自动退到下一档，而不是让每个请求等一次连接超时。
+    endpoints:
+      local:
+        enabled: true
+        # 档位名（降级矩阵里的 local / cloud）。留空则按 base-url 推导：本机地址算 local。
+        tier: local
+        base-url: ${AIFLOW_LOCAL_LLM_BASE_URL:http://localhost:11434/v1}
+        model: ${AIFLOW_LOCAL_LLM_MODEL:qwen2.5:1.5b}
+        api-key: ${AIFLOW_LOCAL_LLM_API_KEY:}
+        capabilities: [chat]
+        timeout-ms: 120000
+      # 云端加速 / 复杂任务（多模态）。base-url 为空即视为未配置，不参与降级统计。
+      cloud:
+        enabled: ${AIFLOW_CLOUD_LLM_ENABLED:true}
+        tier: cloud
+        base-url: ${AIFLOW_CLOUD_LLM_BASE_URL:}
+        model: ${AIFLOW_CLOUD_LLM_MODEL:}
+        # 密钥只从环境变量读：不写进仓库、不进日志
+        api-key: ${AIFLOW_CLOUD_LLM_API_KEY:}
+        capabilities: [chat, vision]
+        timeout-ms: 60000
+      # 火山方舟（豆包）。同一个 tier 可以有多个端点：同档位内按**声明顺序**尝试，
+      # 所以「谁写在前谁是主、后面的当备」这件事由这里的位置决定，不靠 id 字母序。
+      # 默认关：没有密钥的机器不该每 15s 往第三方探活一次（关掉 = 选择，不是故障，不进降级统计）。
+      ark:
+        enabled: ${AIFLOW_ARK_ENABLED:false}
+        tier: cloud
+        base-url: ${AIFLOW_ARK_BASE_URL:https://ark.cn-beijing.volces.com/api/v3}
+        model: ${AIFLOW_ARK_MODEL:doubao-seed-2-1-pro-260628}
+        api-key: ${AIFLOW_ARK_API_KEY:}
+        # 2026-09-22 实测：doubao-seed-2-1-pro-260628 收 text|image|video -> text，能扛 vision 通道
+        capabilities: [chat, vision]
+        timeout-ms: 60000
+        # 该模型默认开推理链，流式返回的是一颗颗 reasoning_content：2026-09-22 实测同一个问题，
+        # 开思考 >100s 还没答完（节点 60s 超时被中断，降级到 mock），关掉 5s 出结果。
+        # 要回质量就改回 enabled，同时把 llm.chat 节点的 timeoutSeconds 一起调大，两者必须同向。
+        extra-body: '{"thinking":{"type":"disabled"}}'
+        # 它的 GET /models 清单有几百 KB，1.5s 全局超时会让档位在 up/down 之间反复跳（实测踩到过）。
+        probe-timeout-ms: 6000
+      # 阿里云百炼专属网关。2026-09-22：旧密钥三条路径全 401（含原生 DashScope），换新密钥后
+      # /compatible-mode/v1/models 与 chat/completions 均 200。qwen3.8-flash 也是推理模型，
+      # 实测同一个问题：开思考 completion=40（含 reasoning_content），关思考 completion=8 且无 reasoning
+      # （两种写法都认：thinking:{type:disabled} 与 enable_thinking:false，这里统一用前者，与 ark 端点同一种拼法）。
+      qwen:
+        enabled: ${AIFLOW_QWEN_ENABLED:false}
+        tier: cloud
+        base-url: ${AIFLOW_QWEN_BASE_URL:https://ws-qb2rjzcwpk43bq03.cn-beijing.maas.aliyuncs.com/compatible-mode/v1}
+        model: ${AIFLOW_QWEN_MODEL:qwen3.8-flash}
+        api-key: ${AIFLOW_QWEN_API_KEY:}
+        capabilities: [chat]
+        timeout-ms: 60000
+        extra-body: '{"thinking":{"type":"disabled"}}'
+        probe-timeout-ms: 6000
+      # DeepSeek 官方 API（OpenAI 兼容）。2026-09-22 实测：/models 列出 deepseek-flash 与 deepseek-v4-pro，
+      # 两个都是推理模型 —— 不关思考时 16 个 token 全被 reasoning 吃掉、content 是空串，
+      # 关掉后 1 个 token 就出结果（finish_reason=stop）。base-url 用带 /v1 的规范写法（实测同一条路径）。
+      deepseek:
+        enabled: ${AIFLOW_DEEPSEEK_ENABLED:false}
+        tier: cloud
+        base-url: ${AIFLOW_DEEPSEEK_BASE_URL:https://api.deepseek.com/v1}
+        model: ${AIFLOW_DEEPSEEK_MODEL:deepseek-flash}
+        api-key: ${AIFLOW_DEEPSEEK_API_KEY:}
+        capabilities: [chat]
+        timeout-ms: 60000
+        extra-body: '{"thinking":{"type":"disabled"}}'
+    probe:
+      enabled: true
+      initial-delay-ms: 2000
+      interval-ms: 15000
+      timeout-ms: 1500
+    breaker:
+      failure-threshold: 3
+      cooldown-ms: 30000
+    mock:
+      latency-ms: 0
+      chunk-delay-ms: 30
+      chunk-size: 8
+  # 鉴权最小切片（设计见 docs/auth-design.md）：静态 Bearer 令牌 -> 主体（Subject）。
+  # 默认关：本地开发与控制台零配置可用；关着的时候启动会打 WARN（decidedBy / actor 是自报字段，不是安全边界）。
+  # 令牌**值**只来自环境变量（取不到时读同名 JVM 系统属性，测试注入用），yml 里只有变量名。
+  auth:
+    enabled: ${AIFLOW_AUTH_ENABLED:false}
+    # id 会写进 decidedBy / actor；token-env 是**变量名**，值从环境变量取（取不到 = 启动失败，只报变量名不打值）。
+    # 打开鉴权只需要：AIFLOW_AUTH_ENABLED=true + 下面两个令牌变量（默认关时这些变量根本不会被读）。
+    subjects:
+      - id: reviewer-a
+        display-name: 审批人 A
+        token-env: AIFLOW_AUTH_TOKEN_REVIEWER_A
+      - id: admin
+        display-name: 管理员
+        token-env: AIFLOW_AUTH_TOKEN_ADMIN
+  # 短期记忆：会话窗口 + 滚动摘要（设计见 docs/memory-design.md）。
+  # 窗口注入默认开：只读 messages 表、不花模型调用，是「听得懂上一句」的最低保障；
+  # 滚动摘要默认关：要调模型、要花钱（与 OCR 同一取舍），且**计入用户额度**。
+  memory:
+    enabled: ${AIFLOW_MEMORY_ENABLED:true}
+    window-size: ${AIFLOW_MEMORY_WINDOW_SIZE:8}
+    window-max-chars: ${AIFLOW_MEMORY_WINDOW_MAX_CHARS:4000}
+    summary-enabled: ${AIFLOW_MEMORY_SUMMARY_ENABLED:false}
+    summary-chunk-size: ${AIFLOW_MEMORY_SUMMARY_CHUNK_SIZE:6}
+    summary-max-input-chars: ${AIFLOW_MEMORY_SUMMARY_MAX_INPUT_CHARS:8000}
+    summary-max-chars: ${AIFLOW_MEMORY_SUMMARY_MAX_CHARS:1200}
+    # 摘要优先用便宜档位（aiflow.provider.cheap-tiers）：它是维护性调用，不值得用最贵的档
+    summary-prefer-cheap-tiers: ${AIFLOW_MEMORY_SUMMARY_PREFER_CHEAP:true}
+    # 连续失败多少次后停用该会话的摘要（避免坏会话每轮烧一次调用），rebuild 可重置
+    summary-max-attempts: ${AIFLOW_MEMORY_SUMMARY_MAX_ATTEMPTS:5}
+  # 长期记忆：用户级事实/偏好（抽取 + 向量召回，设计见 docs/long-memory-design.md）。
+  # 与短期记忆同一取舍，但开关更多一档：**召回默认开**（只多一次 embedding 调用，且用户一条记忆都没有时
+  # 连这一步都跳过；它是「记忆有没有用」的唯一出口），**抽取默认关**（一次对话调用 + 逐条 embedding，是花钱那端）。
+  # 开启抽取：AIFLOW_LONG_MEMORY_EXTRACT_ENABLED=true（并确保 embedding 链可用）。
+  long-memory:
+    enabled: ${AIFLOW_LONG_MEMORY_ENABLED:true}
+    recall-enabled: ${AIFLOW_LONG_MEMORY_RECALL_ENABLED:true}
+    extract-enabled: ${AIFLOW_LONG_MEMORY_EXTRACT_ENABLED:false}
+    # 三条节流同时满足才抽：会话累计消息数 / 距上次抽取的新增消息数 / 距上次抽取的最小间隔
+    extract-min-messages: ${AIFLOW_LONG_MEMORY_EXTRACT_MIN_MESSAGES:8}
+    extract-every-messages: ${AIFLOW_LONG_MEMORY_EXTRACT_EVERY_MESSAGES:6}
+    extract-min-interval: ${AIFLOW_LONG_MEMORY_EXTRACT_MIN_INTERVAL:3m}
+    extract-max-candidates: ${AIFLOW_LONG_MEMORY_EXTRACT_MAX_CANDIDATES:5}
+    extract-min-confidence: ${AIFLOW_LONG_MEMORY_EXTRACT_MIN_CONFIDENCE:0.6}
+    # 单条正文上限：超出**丢弃**而不是截断（被切一半的事实比没有事实更容易误导）
+    extract-max-chars: ${AIFLOW_LONG_MEMORY_EXTRACT_MAX_CHARS:200}
+    # 单用户条目上限：达到后拒绝新 key（不静默丢、也不自动删用户数据）
+    max-entries-per-user: ${AIFLOW_LONG_MEMORY_MAX_ENTRIES_PER_USER:200}
+    recall-top-k: ${AIFLOW_LONG_MEMORY_RECALL_TOP_K:5}
+    # 空（-1）表示继承 aiflow.retrieval.embedding.min-score，再退回 aiflow.retrieval.min-score
+    recall-min-score: ${AIFLOW_LONG_MEMORY_RECALL_MIN_SCORE:-1}
+    # 注入字符预算：按分数从高到低累积，放不下就从最低分那条开始丢（不截断）
+    recall-max-chars: ${AIFLOW_LONG_MEMORY_RECALL_MAX_CHARS:800}
+    # 会话摘要前 N 字参与召回的 query（0 = 不参与）：用户只说「那它呢」时，这是唯一能召回出东西的线索
+    recall-query-chars: ${AIFLOW_LONG_MEMORY_RECALL_QUERY_CHARS:200}
+  # 人工审批：挂起等待不占线程、不占会话锁，决策/超时到达后从检查点继续
+  # （设计见 docs/approval-node-design.md）。节点参数可覆盖这里的默认值。
+  approval:
+    sweep-ms: ${AIFLOW_APPROVAL_SWEEP_MS:5000}
+    # 关掉 = 审批永远不会自己过期（本地调试用；生产别关，否则没人处理的审批会一直挂着）
+    sweep-enabled: ${AIFLOW_APPROVAL_SWEEP_ENABLED:true}
+    sweep-batch-size: ${AIFLOW_APPROVAL_SWEEP_BATCH:50}
+    default-wait-seconds: ${AIFLOW_APPROVAL_WAIT_SECONDS:3600}   # 节点没写 waitSeconds 时的决策窗口
+    max-wait-seconds: ${AIFLOW_APPROVAL_MAX_WAIT_SECONDS:2592000}  # 30 天：挡住「等三年」这类配置错误
+    default-max-level: ${AIFLOW_APPROVAL_MAX_LEVEL:3}
+    # ⚠️ 不是安全边界：系统当前无鉴权，decidedBy 由调用方自报（鉴权落地时在 ApprovalController 接真实身份）
+    admin-users: ${AIFLOW_APPROVAL_ADMINS:}
+    # 通知适配器：log（默认开）+ webhook（默认关）。投递异步：审批决策不等它，
+    # 队列满丢最老、失败只计数不改审批状态。渠道与计数看 GET /api/v1/approvals/notify。
+    notify:
+      enabled: ${AIFLOW_APPROVAL_NOTIFY:true}
+      queue-size: ${AIFLOW_APPROVAL_NOTIFY_QUEUE:512}
+      dedupe-size: ${AIFLOW_APPROVAL_NOTIFY_DEDUPE:2000}
+      webhook:
+        enabled: ${AIFLOW_APPROVAL_WEBHOOK_ENABLED:false}
+        # 出网要过与 HTTP 工具同一份护栏（aiflow.tools.allow-hosts / allow-private-hosts / allow-ports），
+        # 过不了就只记 WARN 并在状态接口里写明原因，**不影响审批本身**
+        url: ${AIFLOW_APPROVAL_WEBHOOK_URL:}
+        timeout-ms: ${AIFLOW_APPROVAL_WEBHOOK_TIMEOUT_MS:3000}
+        # ⚠️ 签名密钥只从环境变量注入，不进库、不进日志（空 = 不带签名头）
+        secret: ${AIFLOW_APPROVAL_WEBHOOK_SECRET:}
+  retrieval:
+    min-score: 0.35
+    top-k: 6
+    min-k: 1
+    max-k: 8
+    cliff-ratio: 0.35
+    mmr-lambda: 0.7
+    merge-adjacent: true
+    sources:
+      - local
+      - cloud
+    embedding-store: pgvector
+    # pgvector ANN 查询路径（embedding-store=pgvector 时生效）。
+    # 关掉、或 embedding-store=memory 时走精确路径（全量向量进 JVM 逐条算余弦）：小 kb 够快，大 kb 会搬几十 MB。
+    # 两条路径产出的分数同口径，阈值 / 断崖 top-k / MMR 后处理完全一致 —— 换路径只改候选集怎么来，不改语义。
+    ann:
+      enabled: ${AIFLOW_ANN_ENABLED:true}
+      # 候选宽度（HNSW 每次查返回多少条）。ANN 是近似的，候选留余量才有得挑；
+      # 配到小于 max-k 会自动按 max-k 生效并打 WARN（断崖 top-k 要在候选里挑）。配得太大等于退回全量开销。
+      candidates: ${AIFLOW_ANN_CANDIDATES:48}
+      # HNSW 查询期搜索宽度：越大越准越慢。检索质量不对时先调它，再调 candidates。
+      ef-search: ${AIFLOW_ANN_EF_SEARCH:100}
+      # pgvector 0.8 起的过滤型 ANN 继续下扫策略（strict_order / relaxed_order / off，留空 = 不设置）。
+      # 0.8 之前是「扫满 ef_search 条再筛 kb/model」，可能筛空 —— 遇到空结果本服务自动回退精确路径。
+      iterative-scan: ${AIFLOW_ANN_ITERATIVE_SCAN:relaxed_order}
+    embedding:
+      # mock = 确定性哈希（离线可跑，供单测与压测）；http = OpenAI 兼容端点，按 tiers 分级兜底
+      mode: ${AIFLOW_EMBEDDING_MODE:mock}
+      # 检索阈值跟着向量模型走，不跟着检索算法走：同一个数字在两种向量空间里代表完全不同的严格程度
+      # （mock 只对词面重叠敏感、余弦偏低；真实模型对同义改写也给高分、余弦整体上移）。
+      # -1 = 继承 aiflow.retrieval.min-score。2026-09-20 实测校准（记录见 docs/quality-plan.md）：
+      #   mock（确定性哈希）    -> 0.35（即全局默认值）
+      #   bge-m3（真实中文向量）-> 0.50（第二个语料复测后从 0.55 下调，见 quality-plan §2.1.2）
+      #   qwen3.7-text-embedding（云端，1024 维）-> 0.45（2026-09-22 校准：黄金集通过区间 [0.40, 0.50]，
+      #       取区间内误拒最少的一档 —— 0.50 会多误拒 2 条可答问题，换来的拒答能力却完全一样）
+      # 两个真实模型取不同值是正常的、也是预期的：它们不是同一个向量空间，这正是不复用
+      # aiflow.retrieval.min-score（mock 量纲）的原因。完整曲线与第二语料证据见 quality-plan §2.1.3。
+      # 只配 mode=http 而不配这里，启动会打 WARN，不会静默拿 mock 量纲的阈值去跑真实向量。
+      min-score: ${AIFLOW_EMBEDDING_MIN_SCORE:-1}
+      dimensions: 1024
+      model: ${AIFLOW_EMBEDDING_MODEL:bge-m3}
+      base-url: http://localhost:11434/v1
+      # 密钥只从环境变量读：不写进仓库、不写进日志
+      api-key: ${AIFLOW_EMBEDDING_API_KEY:}
+      timeout-ms: 60000
+      # 档位顺序即优先级，所有档位必须是同一个模型（向量只在同一模型的向量空间里可比）：
+      #   本地在前 = 离线优先，云端只做加速；云端在前 = 云端加速，本地兜底。
+      # 把 mock 档位放进来是错的：mock 的向量与 bge-m3 不在同一空间，检索会命中「向量来源不一致」的显式报错。
+      tiers:
+        # 真实云端档：百炼 qwen3.7-text-embedding，原生 1024 维（2026-09-22 实测），与服务端 vector(1024) 同维。
+        # 它与本机档**不是同一个模型**，所以两个档位不能同时开：「同一条链上必须同模型」由构建期校验兜底，
+        # 而校验只能看声明 —— 真开了 qwen 就必须把 local 档关掉（AIFLOW_EMBEDDING_LOCAL_ENABLED=false），
+        # 否则 Ollama 的 bge-m3 向量会被当成 qwen 的向量写进库（同为 1024 维，不报错，只算错分数）。
+        # 启用姿势（4 个环境变量，model 也必须一起换，否则启动期就报「档位 model 与 embedding.model 不一致」）：
+        #   AIFLOW_EMBEDDING_MODE=http
+        #   AIFLOW_EMBEDDING_MODEL=qwen3.7-text-embedding
+        #   AIFLOW_EMBEDDING_LOCAL_ENABLED=false
+        #   AIFLOW_EMBEDDING_QWEN_ENABLED=true
+        #   AIFLOW_QWEN_API_KEY=...（复用对话档那把 key，同一个百炼网关）
+        - id: qwen
+          enabled: ${AIFLOW_EMBEDDING_QWEN_ENABLED:false}
+          base-url: ${AIFLOW_QWEN_BASE_URL:https://ws-qb2rjzcwpk43bq03.cn-beijing.maas.aliyuncs.com/compatible-mode/v1}
+          model: ${AIFLOW_EMBEDDING_QWEN_MODEL:qwen3.7-text-embedding}
+          api-key: ${AIFLOW_QWEN_API_KEY:}
+          timeout-ms: 30000
+        # 本机 Ollama 兜底（离线可用）。默认开着：没装 Ollama 时探活失败会落到下一档，不是错误。
+        - id: local
+          enabled: ${AIFLOW_EMBEDDING_LOCAL_ENABLED:true}
+          base-url: ${AIFLOW_EMBEDDING_LOCAL_BASE_URL:http://localhost:11434/v1}
+          timeout-ms: 60000
+        - id: cloud
+          enabled: ${AIFLOW_EMBEDDING_CLOUD_ENABLED:false}
+          base-url: ${AIFLOW_EMBEDDING_BASE_URL:}
+          model: bge-m3
+          api-key: ${AIFLOW_EMBEDDING_API_KEY:}
+          timeout-ms: 30000
+    cloud:
+      enabled: true
+      mode: mock
+      source: cloud
+      score-min: 0
+      score-max: 100
+      http:
+        api-key-env: AIFLOW_CLOUD_KB_API_KEY
+
+---
+spring:
+  config:
+    activate:
+      on-profile: json
+logging:
+  structured:
+    format:
+      console: logstash

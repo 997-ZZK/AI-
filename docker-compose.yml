@@ -1,0 +1,57 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: aiflow-postgres
+    environment:
+      POSTGRES_DB: aiflow
+      POSTGRES_USER: aiflow
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD before starting Compose}
+    ports:
+      - "15432:5432"
+    volumes:
+      - aiflow_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aiflow -d aiflow"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  # 对象存储：PDF / 图片原件留存（aiflow.storage.enabled=true 时才会用到）。
+  # 镜像走 quay 而不是 docker hub：本机镜像站对 minio 命名空间返回 403（2026-09-22 实测），
+  # 固定到具体 RELEASE tag，避免 latest 悄悄漂移。
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+    container_name: aiflow-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: aiflow
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD before starting Compose}
+    ports:
+      - "19000:9000"   # S3 API（引擎连这个）
+      - "19001:9001"   # 控制台（浏览器登录看桶里到底有什么）
+    volumes:
+      - aiflow_minio:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  redis:
+    image: redis:7-alpine
+    container_name: aiflow-redis
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    volumes:
+      - aiflow_redisdata:/data
+    ports:
+      - "16379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+volumes:
+  aiflow_pgdata:
+  aiflow_minio:
+  aiflow_redisdata:

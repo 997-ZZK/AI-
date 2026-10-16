@@ -1,0 +1,26 @@
+target/
+build/
+out/
+*.class
+*.jar
+
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.classpath
+.project
+
+logs/
+# 附件与模型产物：运行时数据，不进仓库
+data/
+*.log
+.env
+.env.local
+*.local.yml
+
+.DS_Store
+Thumbs.db
+node_modules/

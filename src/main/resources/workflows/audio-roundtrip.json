@@ -1,0 +1,28 @@
+{
+  "id": "audio-roundtrip",
+  "name": "audio-roundtrip",
+  "version": 1,
+  "nodes": [
+    {"id": "start", "type": "start", "name": "开始"},
+    {
+      "id": "tts", "type": "tts.speak", "name": "生成临时音频",
+      "requires": ["tts"],
+      "params": {"text": "${input}", "format": "wav"},
+      "retry": {"maxAttempts": 1, "backoffMillis": 0},
+      "timeoutSeconds": 10
+    },
+    {
+      "id": "asr", "type": "asr.transcribe", "name": "转写临时音频",
+      "requires": ["asr"],
+      "params": {"audioHandle": "${audioHandle}"},
+      "retry": {"maxAttempts": 1, "backoffMillis": 0},
+      "timeoutSeconds": 10
+    },
+    {"id": "end", "type": "end", "name": "只返回文本", "params": {"outputs": {"reply": "transcript"}}}
+  ],
+  "edges": [
+    {"from": "start", "to": "tts"},
+    {"from": "tts", "to": "asr"},
+    {"from": "asr", "to": "end"}
+  ]
+}

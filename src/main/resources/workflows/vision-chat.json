@@ -1,0 +1,44 @@
+{
+  "id": "vision-chat",
+  "name": "vision-chat",
+  "version": 1,
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "name": "开始"
+    },
+    {
+      "id": "vision",
+      "type": "llm.vision",
+      "name": "看图回答",
+      "requires": ["chat", "vision"],
+      "params": {
+        "prompt": "${input}",
+        "images": "${attachments}",
+        "fallback": "抱歉，多模态模型暂时不可用，请稍后再试。"
+      },
+      "retry": {
+        "maxAttempts": 2,
+        "backoffMillis": 300
+      },
+      "timeoutSeconds": 90
+    },
+    {
+      "id": "end",
+      "type": "end",
+      "name": "结束",
+      "params": {
+        "outputs": {
+          "reply": "reply",
+          "imageCount": "imageCount",
+          "fallback": "fallback"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {"from": "start", "to": "vision"},
+    {"from": "vision", "to": "end"}
+  ]
+}

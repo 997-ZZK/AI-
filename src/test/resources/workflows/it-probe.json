@@ -1,0 +1,23 @@
+{
+  "id": "it-probe",
+  "name": "it-probe",
+  "version": 2,
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "name": "开始"
+    },
+    {
+      "id": "end",
+      "type": "end",
+      "name": "结束",
+      "params": {
+        "outputs": {}
+      }
+    }
+  ],
+  "edges": [
+    {"from": "start", "to": "end"}
+  ]
+}

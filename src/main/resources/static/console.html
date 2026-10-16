@@ -1,0 +1,1605 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>AIFlowEngine 控制台</title>
+<style>
+  body { font-family: ui-sans-serif, system-ui, "Microsoft YaHei", sans-serif; margin: 24px; max-width: 1040px; }
+  h1 { font-size: 20px; }
+  h2 { font-size: 15px; margin-bottom: 6px; }
+  section { margin-bottom: 12px; }
+  .panel { border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; margin-bottom: 16px; }
+  input, textarea, select { font: inherit; padding: 6px 8px; }
+  button { font: inherit; padding: 6px 12px; cursor: pointer; }
+  #status { color: #555; font-size: 13px; }
+  pre { background: #0f172a; color: #e2e8f0; padding: 12px; border-radius: 8px; min-height: 240px; overflow: auto; white-space: pre-wrap; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .muted { color: #666; font-size: 13px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .ok { background: #dcfce7; color: #166534; }
+  .mock { background: #e0f2fe; color: #075985; }
+  .degraded { background: #fef3c7; color: #92400e; }
+  .unavailable { background: #fee2e2; color: #991b1b; }
+  .notice { color: #92400e; font-size: 13px; margin-top: 6px; }
+  .audio-meta { color: #555; font-size: 13px; white-space: pre-line; }
+  .audio-error { color: #991b1b; font-size: 13px; white-space: pre-line; }
+  .audio-note { color: #075985; font-size: 13px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { border: 1px solid #e2e8f0; padding: 4px 6px; text-align: left; vertical-align: top; }
+  .replay-summary { white-space: pre-line; font-size: 13px; }
+  .replay-table { overflow-x: auto; }
+  .replay-table td { overflow-wrap: anywhere; }
+  .replay-json { min-height: 84px; max-height: 360px; }
+  .replay-error { min-height: 36px; max-height: 180px; background: #fff1f2; color: #991b1b; }
+  #replayNodes .replay-selected { background: #eff6ff; }
+</style>
+</head>
+<body>
+<h1>AIFlowEngine 控制台（M2：RAG 全链路 / M3：分级路由）</h1>
+
+<div class="panel">
+<h2>0. 服务档位（降级可见）</h2>
+<section class="row">
+  <button onclick="refreshCapabilities()">刷新档位</button>
+  <span id="capLevel" class="badge ok">L?</span>
+  <span id="capLevelName" class="muted"></span>
+</section>
+<section id="capNotice" class="notice"></section>
+<table id="capChannels">
+  <thead><tr><th>通道</th><th>状态</th><th>生效档位</th><th>候选</th></tr></thead>
+  <tbody></tbody>
+</table>
+</div>
+
+<div class="panel">
+<h2>0.5 工具白名单（HTTP / MCP / 技能库）</h2>
+<section class="row">
+  <button onclick="refreshTools()">刷新工具</button>
+  <button onclick="reloadTools()">重新发现（MCP / 技能）</button>
+  <span id="toolSummary" class="muted"></span>
+</section>
+<section id="toolFailures" class="notice"></section>
+<table id="toolTable"><thead><tr><th>id</th><th>来源</th><th>写操作</th><th>说明</th></tr></thead><tbody></tbody></table>
+</div>
+
+<div class="panel">
+<h2>1. 用户与会话</h2>
+<section class="row">
+  <label>externalId <input id="externalId" value="demo-user"/></label>
+  <button onclick="ensureUser()">创建/获取用户</button>
+  <span id="userId" class="muted"></span>
+</section>
+<section class="row">
+  <label>工作流 <select id="workflowName">
+    <option value="basic-chat">basic-chat（纯对话）</option>
+    <option value="rag-chat">rag-chat（检索 + 引用）</option>
+    <option value="vision-chat">vision-chat（看图回答，先上传图片）</option>
+    <option value="approval-chat">approval-chat（人工审批，assignee=reviewer-a）</option>
+  </select></label>
+  <button onclick="createSession()">新建会话</button>
+  <span id="sessionId" class="muted"></span>
+</section>
+</div>
+
+<div class="panel">
+<h2>2. 知识库（rag-chat 默认查 kbId=demo）</h2>
+<section class="row">
+  <label>kbId <input id="kbId" value="demo"/></label>
+  <input type="file" id="file" accept=".md,.markdown,.txt,.json"/>
+  <button onclick="uploadDocument()">上传文件入库</button>
+  <button onclick="listDocuments()">查看文档</button>
+  <button onclick="reindex()">重建索引</button>
+</section>
+<section>
+  <textarea id="docContent" rows="3" style="width:100%"># 报销制度
+
+## 发票要求
+发票抬头必须为公司全称，并注明税号。</textarea>
+  <div class="row" style="margin-top:6px">
+    <label>标题 <input id="docTitle" value="报销制度"/></label>
+    <button onclick="ingestText()">粘贴文本入库</button>
+    <span class="muted">支持 text / .md / .json；PDF 与图片 OCR 计划在 M3。</span>
+  </div>
+</section>
+<section class="row">
+  <label>检索 <input id="query" value="发票抬头要注明什么？" size="30"/></label>
+  <label>topK <input id="topK" type="number" value="6" style="width:64px"/></label>
+  <label title="留空 = 用服务端配置的阈值（跟着向量模型校准，见 docs/quality-plan.md）">minScore <input id="minScore" type="number" step="0.05" placeholder="按配置" style="width:84px"/></label>
+  <button onclick="retrieve()">检索调试</button>
+</section>
+<table id="chunks"><thead><tr><th>#</th><th>docId</th><th>score</th><th>引用</th><th>片段</th></tr></thead><tbody></tbody></table>
+</div>
+
+<div class="panel">
+<h2>3. 对话（SSE 实时事件）</h2>
+<section>
+  <textarea id="message" rows="3" style="width:100%">发票抬头要写什么？</textarea>
+</section>
+<section class="row">
+  <input type="file" id="image" accept="image/png,image/jpeg,image/webp,image/gif"/>
+  <button onclick="uploadImage()">上传图片</button>
+  <span id="attachmentList" class="muted"></span>
+  <img id="preview" alt="预览" style="display:none;max-height:96px;border-radius:8px"/>
+</section>
+<section class="row">
+  <button onclick="send()">发送并订阅 SSE</button>
+  <span id="status"></span>
+</section>
+<pre id="events"></pre>
+<section class="row" style="margin-top:8px">
+  <button onclick="refreshMemory()">记忆状态</button>
+  <button onclick="previewMemory()">装配预览</button>
+  <button onclick="rebuildMemory()">重建摘要</button>
+  <span class="muted">窗口注入默认开；滚动摘要要服务端开 <code>AIFLOW_MEMORY_SUMMARY_ENABLED=true</code>（见 docs/memory-design.md）</span>
+</section>
+<pre id="memoryLog" style="min-height:110px">选中会话后点「记忆状态」：窗口条数 / 摘要水位 / 已折多少条 / token 成本。摘要正文与装配结果在「装配预览」里。</pre>
+</div>
+
+<div class="panel">
+<h2>3.2 运行回放</h2>
+<section class="muted">查看已保存的运行与节点尝试记录。输入 runId 后查询，进行中的运行可手动刷新。</section>
+<section class="row">
+  <label>runId <input id="replayRunId" size="38" autocomplete="off" placeholder="输入历史运行 UUID" oninput="replayRunIdChanged()" onkeydown="if (event.key === 'Enter') loadReplay(0)"/></label>
+  <button id="replayQueryButton" onclick="loadReplay(0)" disabled>查询运行</button>
+  <button id="replayRefreshButton" onclick="refreshReplay()" disabled>刷新当前页</button>
+  <label>每页 <select id="replayPageSize" onchange="loadReplay(0)"><option value="10">10</option><option value="50" selected>50</option><option value="200">200</option></select> 条</label>
+</section>
+<section id="replayStatus" class="muted" role="status" aria-live="polite">发送消息后会回填最近 runId，也可以粘贴历史 runId。</section>
+<section id="replaySummary" class="replay-summary"></section>
+<pre id="replayRunError" class="replay-error" hidden></pre>
+<section class="muted">失败行只代表该次尝试；运行最终结果以上方整体状态为准。总历时包含审批等待，未结束记录不显示最终耗时。</section>
+<div class="replay-table">
+<table id="replayNodes">
+  <thead><tr><th>节点</th><th>类型</th><th>尝试</th><th>本次尝试状态</th><th>总历时</th><th>起止时间</th><th>快照</th></tr></thead>
+  <tbody></tbody>
+</table>
+</div>
+<section class="row" style="margin-top:8px">
+  <button id="replayPreviousButton" onclick="turnReplayPage(-1)" disabled>上一页</button>
+  <span id="replayPageInfo" class="muted">尚未查询</span>
+  <button id="replayNextButton" onclick="turnReplayPage(1)" disabled>下一页</button>
+</section>
+<section id="replayDetail" hidden>
+  <div class="row"><strong>节点尝试快照</strong><button onclick="clearReplayDetail()">收起快照</button></div>
+  <section id="replayDetailStatus" class="muted" role="status" aria-live="polite"></section>
+  <section id="replayDetailMeta" class="replay-summary"></section>
+  <pre id="replayDetailError" class="replay-error" hidden></pre>
+  <div class="muted">已记录输入</div><pre id="replayDetailInput" class="replay-json"></pre>
+  <div class="muted">已记录输出</div><pre id="replayDetailOutput" class="replay-json"></pre>
+</section>
+<section class="muted">输入、输出仅在点击“展开”后读取并显示于当前页面。列表按开始时间与 ID 稳定排序；相同时间不代表严格因果顺序。刷新时展示当前已提交的记录。</section>
+</div>
+
+<div class="panel">
+<h2>3.3 一次性音频（ASR / TTS）</h2>
+<section class="audio-note">音频只在本次请求与当前页面内存中处理，不进入会话、附件、事件或浏览器存储。mock ASR 是固定模拟转写，mock TTS 是静音 WAV，仅用于联调。</section>
+<section class="muted">客户端上传上限 5MiB、合成文本上限 2000 个 Unicode 码点；文件格式、时长及服务端有效限制以 API 校验为准。</section>
+<section class="row" style="margin-top:8px">
+  <span id="audioAsrCapability" class="badge unavailable">ASR 能力读取中</span>
+  <span id="audioTtsCapability" class="badge unavailable">TTS 能力读取中</span>
+  <button onclick="refreshCapabilities()">刷新音频能力</button>
+  <button onclick="clearAudioPanel()">清空音频面板</button>
+</section>
+<section class="row" style="margin-top:8px">
+  <label>ASR WAV <input type="file" id="audioAsrFile" accept="audio/wav,audio/x-wav,audio/wave,.wav"/></label>
+  <button id="audioAsrButton" onclick="transcribeAudio()" disabled>转写</button>
+  <span id="audioAsrStatus" class="audio-meta">等待音频能力检查…</span>
+</section>
+<section>
+  <textarea id="audioAsrText" rows="3" style="width:100%" readonly placeholder="转写结果只显示在本页，不会自动填入对话"></textarea>
+  <div id="audioAsrMeta" class="audio-meta"></div>
+</section>
+<section class="row" style="margin-top:8px">
+  <label>合成文本 <textarea id="audioTtsText" rows="2" cols="42" placeholder="输入不超过 2000 个 Unicode 码点的文本"></textarea></label>
+  <label>voice <input id="audioTtsVoice" size="16" placeholder="可留空"/></label>
+  <button id="audioTtsButton" onclick="synthesizeAudio()" disabled>合成 WAV</button>
+  <span id="audioTtsStatus" class="audio-meta">等待音频能力检查…</span>
+</section>
+<section>
+  <audio id="audioTtsPlayer" controls preload="none" style="display:none;width:100%"></audio>
+  <div id="audioTtsMeta" class="audio-meta"></div>
+</section>
+</div>
+
+<div class="panel">
+<h2>3.5 长期记忆（用户级：事实 / 偏好，跨会话生效）</h2>
+<section class="row">
+  <label>kind <select id="memoryKind"><option>FACT</option><option>PREFERENCE</option></select></label>
+  <label>key <input id="memoryKey" size="16" placeholder="公司报销规则"/></label>
+  <label>value <input id="memoryValue" size="26" placeholder="报销要附行程单"/></label>
+  <button onclick="createLongMemory()">手工新增 / 纠正</button>
+  <button onclick="refreshLongMemories()">刷新列表</button>
+</section>
+<section class="row">
+  <label>召回预览输入 <input id="longMemoryQuery" size="26" placeholder="报销要附什么材料"/></label>
+  <button onclick="previewLongMemory()">召回预览</button>
+  <span class="muted">默认是<strong>召回开、抽取关</strong>：要服务端开 <code>AIFLOW_LONG_MEMORY_EXTRACT_ENABLED=true</code>
+  （设计见 docs/long-memory-design.md；抽取是花钱那一端，所以默认关）</span>
+</section>
+<table id="longMemories"><thead><tr><th>kind</th><th>key</th><th>value</th><th>来源</th><th>置信</th>
+<th>命中</th><th>向量</th><th></th></tr></thead><tbody></tbody></table>
+<pre id="longMemoryLog" style="min-height:110px;margin-top:8px">点「刷新列表」看这个用户记住了什么；点「召回预览」看某句话会命中哪几条、打多少分、为什么被丢掉（阈值 / 条数 / 字符预算）。</pre>
+</div>
+
+<div class="panel">
+<h2>3.6 用户画像（行为统计 / 显式偏好）</h2>
+<section class="row">
+  <button onclick="refreshProfile()">刷新画像</button>
+  <label>时区 <input id="profileTimezone" value="UTC" size="20" placeholder="Asia/Shanghai"/></label>
+  <button onclick="updateProfile(null)">保存时区</button>
+  <button onclick="updateProfile(true)">启用画像</button>
+  <button onclick="updateProfile(false)">停用画像</button>
+  <button onclick="resetProfile()">重置统计并停用</button>
+</section>
+<section id="profileState" class="muted">先在第 1 节选择用户。画像默认关闭；查询不会启用。</section>
+<section class="muted">统计从本次启用起点与最近 30 天中较晚的时间开始。停用会停止画像统计与偏好应用；重置会清空统计视图并停用，原运行、审计和长期记忆条目保留。再次启用从新起点统计。</section>
+<section id="profileStats" class="muted"></section>
+<table id="profileWorkflows"><thead><tr><th>工作流</th><th>版本</th><th>运行次数</th></tr></thead><tbody></tbody></table>
+<section class="muted" style="margin-top:8px">工作流分布是使用事实，不代表语义话题分类。</section>
+<table id="profileHours"><thead><tr><th>画像时区小时</th><th>运行次数</th></tr></thead><tbody></tbody></table>
+<table id="profileTools" style="margin-top:8px"><thead><tr><th>工具</th><th>来源</th><th>成功</th><th>复用</th><th>失败</th><th>拒绝</th><th>未知</th></tr></thead><tbody></tbody></table>
+<section id="profileCoverage" class="muted" style="margin-top:8px"></section>
+<section class="row" style="margin-top:12px">
+  <label>回复风格 <select id="profileResponseStyle"><option value="concise">简洁（concise）</option><option value="balanced" selected>适中（balanced）</option><option value="detailed">详细（detailed）</option></select></label>
+  <button onclick="saveProfilePreference('response-style', 'profileResponseStyle')">保存回复偏好</button>
+  <label>模型策略 <select id="profileModelPolicy"><option value="default">沿用路由（default）</option><option value="cheap-first">优先便宜档（cheap-first）</option></select></label>
+  <button onclick="saveProfilePreference('model-policy', 'profileModelPolicy')">保存模型偏好</button>
+</section>
+<section class="muted">偏好保存为第 3.5 节的 MANUAL / PREFERENCE 长期记忆条目。画像停用不会删除它们；若要删除条目，使用第 3.5 节对应条目的删除按钮。</section>
+<section class="row" style="margin-top:8px">
+  <label>工作流画像参数 <select id="profilePreferenceMode"><option value="inherit">继承（inherit）</option><option value="none">禁用（none）</option></select></label>
+  <label>显式模型 <input id="profilePreviewModel" size="18" placeholder="留空沿用路由"/></label>
+  <button onclick="refreshProfilePreview()">偏好应用预览</button>
+</section>
+<pre id="profileLog" style="min-height:90px">保存偏好或预览会显示来源与生效原因。预览不会改统计、命中数或画像开关。</pre>
+</div>
+
+<div class="panel">
+<h2>4. 人工审批（待办 / 决策 / 审批链 / 通知渠道）</h2>
+<section class="row">
+  <label>assignee <input id="approvalAssignee" value="reviewer-a"/></label>
+  <label title="当前没有鉴权：decidedBy 由调用方自报，服务端只校验在不在审批人名单里">decidedBy <input id="approvalDecidedBy" value="reviewer-a"/></label>
+  <label>备注 <input id="approvalComment" size="16" placeholder="可留空"/></label>
+  <button onclick="refreshApprovals()">刷新待办</button>
+  <button onclick="refreshApprovalNotify()">刷新通知渠道</button>
+</section>
+<section class="row">
+  <label title="服务端开启鉴权（aiflow.auth.enabled=true）时必填；只存在浏览器内存里，不落库、不进日志">令牌 <input id="authToken" size="30" placeholder="Bearer 令牌（鉴权关闭时留空）"/></label>
+  <button onclick="refreshAuth()">我是谁</button>
+  <span id="authWhoami" class="muted"></span>
+</section>
+<section class="muted" id="approvalStatusLine"></section>
+<table id="approvalTable">
+  <thead><tr><th>approvalId</th><th>runId</th><th>层</th><th>标题</th><th>到期</th><th>审批人</th><th>操作</th></tr></thead>
+  <tbody></tbody>
+</table>
+<section class="row" style="margin-top:8px">
+  <label>runId <input id="approvalRunId" size="38" placeholder="查审批链（决策 / 看事件后自动回填）"/></label>
+  <button onclick="refreshApprovalChain()">查审批链</button>
+</section>
+<table id="approvalChain">
+  <thead><tr><th>节点</th><th>层</th><th>状态</th><th>决策</th><th>决策人</th><th>耗时</th></tr></thead>
+  <tbody></tbody>
+</table>
+<pre id="approvalLog" style="min-height:120px;margin-top:8px">点待办行的「事件」看审批事件流。</pre>
+<table id="approvalNotify">
+  <thead><tr><th>通知渠道</th><th>启用</th><th>状态</th></tr></thead>
+  <tbody></tbody>
+</table>
+<div class="muted" id="approvalNotifyCounters"></div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let userId = null;
+let sessionId = null;
+let source = null;
+let attachmentIds = [];
+let profileSnapshot = null;
+let userRequestToken = 0;
+let audioCapabilityState = { loaded: false, loading: false, asr: false, tts: false };
+let audioAsrRequest = null;
+let audioTtsRequest = null;
+let audioAsrGeneration = 0;
+let audioTtsGeneration = 0;
+let audioTtsObjectUrl = null;
+let capabilityRequestGeneration = 0;
+let replayRequestGeneration = 0;
+let replayDetailGeneration = 0;
+let replayListRequest = null;
+let replayDetailRequest = null;
+let replayLoadedRunId = null;
+let replaySelectedNodeRunId = null;
+let replayPage = 0;
+let replayHasNext = false;
+let replayListLoading = false;
+
+const AUDIO_CLIENT_MAX_BYTES = 5 * 1024 * 1024;
+const AUDIO_CLIENT_MAX_TEXT_CODE_POINTS = 2000;
+
+function authToken() {
+  const field = $("authToken");
+  return field ? field.value.trim() : "";
+}
+
+function audioBadgeClass(status) {
+  return status === "mock" ? "mock" : (status === "ok" ? "ok"
+      : (status === "degraded" ? "degraded" : "unavailable"));
+}
+
+function audioChannelAvailable(channel) {
+  return !!channel && (channel.status === "mock" || channel.status === "ok");
+}
+
+function audioChannelMessage(channel, name) {
+  if (!channel) return name + " 不可用：能力接口未返回该通道";
+  if (channel.status === "mock") return name + " mock：仅联调（固定模拟转写/静音 WAV）";
+  if (channel.status === "ok") return name + " 可用";
+  const candidate = (channel.candidates || [])[0];
+  return name + " 不可用" + (candidate && candidate.detail ? "：" + candidate.detail : "");
+}
+
+function updateAudioButtonState() {
+  const asrButton = $("audioAsrButton");
+  const ttsButton = $("audioTtsButton");
+  if (asrButton) asrButton.disabled = audioCapabilityState.loading
+      || !audioCapabilityState.loaded || !audioCapabilityState.asr || !!audioAsrRequest;
+  if (ttsButton) ttsButton.disabled = audioCapabilityState.loading
+      || !audioCapabilityState.loaded || !audioCapabilityState.tts || !!audioTtsRequest;
+}
+
+function setAudioCapabilityState(loaded, asr, tts, asrLabel, ttsLabel, asrDetail, ttsDetail,
+                                 asrStatus, ttsStatus) {
+  audioCapabilityState.loaded = loaded;
+  audioCapabilityState.asr = asr;
+  audioCapabilityState.tts = tts;
+  const asrBadge = $("audioAsrCapability");
+  const ttsBadge = $("audioTtsCapability");
+  asrBadge.className = "badge " + audioBadgeClass(asrStatus);
+  ttsBadge.className = "badge " + audioBadgeClass(ttsStatus);
+  asrBadge.textContent = asrLabel;
+  ttsBadge.textContent = ttsLabel;
+  $("audioAsrStatus").textContent = asrDetail;
+  $("audioTtsStatus").textContent = ttsDetail;
+  updateAudioButtonState();
+}
+
+function clearAudioError() {
+  $("audioAsrMeta").className = "audio-meta";
+  $("audioTtsMeta").className = "audio-meta";
+}
+
+async function audioResponseError(response) {
+  // Decode the API error envelope, but never display its arbitrary message/body.
+  let code = null;
+  try {
+    const json = await response.json();
+    if (json && Number.isInteger(json.code)) code = json.code;
+  } catch (ignored) { }
+  return { audioHttpStatus: response.status, audioApiCode: code };
+}
+
+function audioErrorMessage(prefix, error) {
+  const status = error && error.audioHttpStatus;
+  const messages = {
+    400: "请求无效", 413: "超出音频或文本限制", 415: "音频格式不支持",
+    502: "音频服务返回失败", 503: "音频通道不可用", 504: "音频服务超时"
+  };
+  if (Number.isInteger(status) && status >= 400 && status <= 599) {
+    return prefix + "失败：" + (messages[status] || "服务请求失败") + "（HTTP " + status + "）";
+  }
+  return prefix + "失败，请检查服务状态后重试";
+}
+
+function releaseAudioObjectUrl() {
+  if (audioTtsObjectUrl) {
+    URL.revokeObjectURL(audioTtsObjectUrl);
+    audioTtsObjectUrl = null;
+  }
+  const player = $("audioTtsPlayer");
+  if (player) {
+    player.pause();
+    player.removeAttribute("src");
+    player.load();
+    player.style.display = "none";
+  }
+}
+
+function clearAudioPanel() {
+  if (audioAsrRequest) audioAsrRequest.abort();
+  if (audioTtsRequest) audioTtsRequest.abort();
+  audioAsrRequest = null;
+  audioTtsRequest = null;
+  audioAsrGeneration++;
+  audioTtsGeneration++;
+  releaseAudioObjectUrl();
+  $("audioAsrFile").value = "";
+  $("audioAsrText").value = "";
+  $("audioTtsText").value = "";
+  $("audioTtsVoice").value = "";
+  $("audioAsrMeta").textContent = "";
+  $("audioTtsMeta").textContent = "";
+  clearAudioError();
+  $("audioAsrStatus").textContent = audioCapabilityState.loaded
+      ? "已清空，等待下一次转写" : "等待音频能力检查…";
+  $("audioTtsStatus").textContent = audioCapabilityState.loaded
+      ? "已清空，等待下一次合成" : "等待音频能力检查…";
+  updateAudioButtonState();
+}
+
+async function transcribeAudio() {
+  if (audioCapabilityState.loading || !audioCapabilityState.loaded || !audioCapabilityState.asr) {
+    $("audioAsrMeta").className = "audio-error";
+    $("audioAsrMeta").textContent = "ASR 通道不可用，请先刷新能力";
+    return;
+  }
+  const file = $("audioAsrFile").files[0];
+  if (!file) {
+    $("audioAsrMeta").className = "audio-error";
+    $("audioAsrMeta").textContent = "请选择一个 WAV 文件";
+    return;
+  }
+  if (file.size <= 0) {
+    $("audioAsrMeta").className = "audio-error";
+    $("audioAsrMeta").textContent = "文件不能为空";
+    return;
+  }
+  if (file.size > AUDIO_CLIENT_MAX_BYTES) {
+    $("audioAsrMeta").className = "audio-error";
+    $("audioAsrMeta").textContent = "文件超过客户端 5MiB 限制";
+    return;
+  }
+  if (audioAsrRequest) audioAsrRequest.abort();
+  const generation = ++audioAsrGeneration;
+  const controller = new AbortController();
+  audioAsrRequest = controller;
+  updateAudioButtonState();
+  $("audioAsrText").value = "";
+  $("audioAsrMeta").className = "audio-meta";
+  $("audioAsrMeta").textContent = "转写请求中…";
+  try {
+    const form = new FormData();
+    form.append("file", file);
+    const headers = {};
+    const token = authToken();
+    if (token) headers["Authorization"] = "Bearer " + token;
+    const response = await fetch("/api/v1/audio/transcriptions", {
+      method: "POST", headers: headers, body: form, signal: controller.signal
+    });
+    if (!response.ok) throw await audioResponseError(response);
+    const json = await response.json();
+    const data = json && json.code === 0 ? json.data : null;
+    if (!data || typeof data.text !== "string") throw new Error("转写失败，响应格式无效");
+    if (generation !== audioAsrGeneration) return;
+    $("audioAsrText").value = data.text;
+    $("audioAsrMeta").textContent = "provider=" + String(data.provider || "-")
+        + "  model=" + String(data.model || "-") + "  durationMs=" + String(data.durationMs || 0);
+  } catch (error) {
+    if (error && error.name === "AbortError") return;
+    if (generation === audioAsrGeneration) {
+      $("audioAsrMeta").className = "audio-error";
+      $("audioAsrMeta").textContent = audioErrorMessage("转写", error);
+    }
+  } finally {
+    if (generation === audioAsrGeneration) {
+      audioAsrRequest = null;
+      updateAudioButtonState();
+    }
+  }
+}
+
+async function synthesizeAudio() {
+  if (audioCapabilityState.loading || !audioCapabilityState.loaded || !audioCapabilityState.tts) {
+    $("audioTtsMeta").className = "audio-error";
+    $("audioTtsMeta").textContent = "TTS 通道不可用，请先刷新能力";
+    return;
+  }
+  const text = $("audioTtsText").value.trim();
+  const codePoints = Array.from(text).length;
+  if (!text.trim()) {
+    $("audioTtsMeta").className = "audio-error";
+    $("audioTtsMeta").textContent = "合成文本不能为空";
+    return;
+  }
+  if (codePoints > AUDIO_CLIENT_MAX_TEXT_CODE_POINTS) {
+    $("audioTtsMeta").className = "audio-error";
+    $("audioTtsMeta").textContent = "合成文本超过客户端 2000 个 Unicode 码点限制";
+    return;
+  }
+  if (audioTtsRequest) audioTtsRequest.abort();
+  const generation = ++audioTtsGeneration;
+  const controller = new AbortController();
+  audioTtsRequest = controller;
+  updateAudioButtonState();
+  releaseAudioObjectUrl();
+  $("audioTtsMeta").className = "audio-meta";
+  $("audioTtsMeta").textContent = "合成请求中…";
+  try {
+    const headers = { "Content-Type": "application/json" };
+    const token = authToken();
+    if (token) headers["Authorization"] = "Bearer " + token;
+    const body = { text: text };
+    const voice = $("audioTtsVoice").value.trim();
+    if (voice) body.voice = voice;
+    const response = await fetch("/api/v1/audio/speech", {
+      method: "POST", headers: headers, body: JSON.stringify(body), signal: controller.signal
+    });
+    if (!response.ok) throw await audioResponseError(response);
+    const contentType = (response.headers.get("Content-Type") || "").split(";", 1)[0].trim().toLowerCase();
+    if (contentType !== "audio/wav") throw new Error("合成失败，响应媒体类型无效");
+    const blob = await response.blob();
+    if (!blob.size) throw new Error("合成失败，响应音频为空");
+    const url = URL.createObjectURL(blob);
+    if (generation !== audioTtsGeneration) {
+      URL.revokeObjectURL(url);
+      return;
+    }
+    releaseAudioObjectUrl();
+    audioTtsObjectUrl = url;
+    const player = $("audioTtsPlayer");
+    player.src = url;
+    player.style.display = "block";
+    player.load();
+    $("audioTtsMeta").textContent = "provider=" + (response.headers.get("X-Audio-Provider") || "-")
+        + "  model=" + (response.headers.get("X-Audio-Model") || "-")
+        + "  durationMs=" + (response.headers.get("X-Audio-Duration-Ms") || "-")
+        + "  bytes=" + blob.size;
+  } catch (error) {
+    if (error && error.name === "AbortError") return;
+    if (generation === audioTtsGeneration) {
+      $("audioTtsMeta").className = "audio-error";
+      $("audioTtsMeta").textContent = audioErrorMessage("合成", error);
+    }
+  } finally {
+    if (generation === audioTtsGeneration) {
+      audioTtsRequest = null;
+      updateAudioButtonState();
+    }
+  }
+}
+
+async function api(path, body, method) {
+  const headers = { "Content-Type": "application/json" };
+  const token = authToken();
+  if (token) headers["Authorization"] = "Bearer " + token;
+  const res = await fetch(path, {
+    method: method || "POST",
+    headers: headers,
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+  const json = await res.json();
+  if (json.code !== 0) throw new Error(json.code + " " + json.message);
+  return json.data;
+}
+
+function replayUuid(value) {
+  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
+
+function replayCurrentRunId() { return $("replayRunId").value.trim().toLowerCase(); }
+
+function replayStatusLabel(value, nodeAttempt) {
+  const labels = { PENDING: "排队中", RUNNING: "运行中", WAITING_APPROVAL: "等待人工审批", WAITING: "等待审批",
+    SUCCEEDED: "成功", DEGRADED: "降级完成", FAILED: nodeAttempt ? "本次尝试失败" : "运行失败", CANCELED: "已取消" };
+  return (labels[value] || "未知状态") + "（" + String(value || "未记录") + "）";
+}
+
+function replayStatusClass(value) {
+  if (value === "SUCCEEDED") return "ok";
+  if (value === "FAILED" || value === "CANCELED") return "unavailable";
+  if (value === "DEGRADED" || value === "WAITING" || value === "WAITING_APPROVAL") return "degraded";
+  return "mock";
+}
+
+function replayTime(value) { return value ? String(value) : "未记录"; }
+
+function replayElapsed(item) {
+  if (typeof item.elapsedMs === "number" && Number.isFinite(item.elapsedMs) && item.elapsedMs >= 0) {
+    return item.elapsedMs + " ms";
+  }
+  return item.endedAt ? "不可计算" : "未结束";
+}
+
+function updateReplayControls() {
+  const hasInput = !!replayCurrentRunId();
+  $("replayQueryButton").disabled = !hasInput;
+  $("replayRefreshButton").disabled = !hasInput;
+  $("replayPreviousButton").disabled = replayListLoading || !replayLoadedRunId || replayPage <= 0;
+  $("replayNextButton").disabled = replayListLoading || !replayLoadedRunId || !replayHasNext;
+}
+
+function clearReplayDetail() {
+  replayDetailGeneration++;
+  if (replayDetailRequest) replayDetailRequest.abort();
+  replayDetailRequest = null;
+  replaySelectedNodeRunId = null;
+  $("replayDetail").hidden = true;
+  ["replayDetailStatus", "replayDetailMeta", "replayDetailError", "replayDetailInput", "replayDetailOutput"].forEach(function (id) {
+    $(id).textContent = "";
+  });
+  $("replayDetailError").hidden = true;
+  $("replayNodes").querySelectorAll("tbody tr").forEach(function (row) { row.classList.remove("replay-selected"); });
+}
+
+function expireReplayRequests() {
+  replayRequestGeneration++;
+  if (replayListRequest) replayListRequest.abort();
+  replayListRequest = null;
+  replayListLoading = false;
+  clearReplayDetail();
+}
+
+function clearReplayResults() {
+  replayLoadedRunId = null;
+  replayHasNext = false;
+  $("replaySummary").textContent = "";
+  $("replayRunError").textContent = "";
+  $("replayRunError").hidden = true;
+  $("replayNodes").querySelector("tbody").textContent = "";
+  $("replayPageInfo").textContent = "尚未查询";
+}
+
+function replayRunIdChanged() {
+  expireReplayRequests();
+  clearReplayResults();
+  replayPage = 0;
+  $("replayStatus").textContent = replayCurrentRunId() ? "runId 已变更，请查询此运行。" : "请输入 runId。";
+  updateReplayControls();
+}
+
+function setReplayRunId(runId) {
+  if (!replayUuid(runId)) return;
+  $("replayRunId").value = runId;
+  replayRunIdChanged();
+  $("replayStatus").textContent = "已回填最近提交的 runId，点击“查询运行”查看保存的执行记录。";
+}
+
+async function replayGet(path, controller) {
+  const headers = { "Accept": "application/json" };
+  const token = authToken();
+  if (token) headers["Authorization"] = "Bearer " + token;
+  const response = await fetch(path, { method: "GET", headers: headers, signal: controller.signal, cache: "no-store" });
+  if (!response.ok) throw { replayHttpStatus: response.status };
+  const body = await response.json();
+  if (!body || body.code !== 0 || !body.data) throw { replayInvalidResponse: true };
+  return body.data;
+}
+
+function replayErrorLabel(error) {
+  const messages = { 400: "请求参数无效", 401: "当前身份未通过认证", 403: "无权读取此记录", 404: "记录不存在" };
+  const status = error && error.replayHttpStatus;
+  if (Number.isInteger(status)) return (messages[status] || "服务读取失败") + "（HTTP " + status + "）";
+  if (error && error.replayInvalidResponse) return "服务响应格式无效";
+  return "请求失败，请检查服务状态后重试";
+}
+
+function replayListIsCurrent(generation, runId, controller) {
+  return generation === replayRequestGeneration && replayCurrentRunId() === runId && replayListRequest === controller;
+}
+
+function renderReplaySnapshot(snapshot) {
+  $("replaySummary").textContent = [
+    "运行：" + snapshot.runId,
+    "整体状态：" + replayStatusLabel(snapshot.status, false) + "；已记录步数：" + snapshot.steps,
+    "开始：" + replayTime(snapshot.startedAt) + "\n结束：" + replayTime(snapshot.finishedAt)
+  ].join("\n");
+  const hasError = snapshot.error !== null && snapshot.error !== undefined && snapshot.error !== "";
+  $("replayRunError").hidden = !hasError;
+  $("replayRunError").textContent = hasError ? "运行已记录错误：\n" + String(snapshot.error) : "";
+}
+
+function renderReplayNodes(items) {
+  const tbody = $("replayNodes").querySelector("tbody");
+  tbody.textContent = "";
+  if (!items.length) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 7;
+    cell.textContent = "本页暂无已保存的节点尝试记录。";
+    row.appendChild(cell);
+    tbody.appendChild(row);
+    return;
+  }
+  items.forEach(function (item) {
+    const row = document.createElement("tr");
+    row.dataset.nodeRunId = item.nodeRunId;
+    [item.nodeId, item.nodeType, "第 " + item.attempt + " 次", replayStatusLabel(item.status, true), replayElapsed(item),
+      "开始：" + replayTime(item.startedAt) + "\n结束：" + replayTime(item.endedAt)].forEach(function (value, index) {
+      const cell = document.createElement("td");
+      if (index === 3) {
+        const badge = document.createElement("span");
+        badge.className = "badge " + replayStatusClass(item.status);
+        badge.textContent = value;
+        cell.appendChild(badge);
+      } else { cell.textContent = value === null || value === undefined ? "未记录" : String(value); }
+      if (index === 5) cell.style.whiteSpace = "pre-line";
+      row.appendChild(cell);
+    });
+    const action = document.createElement("td");
+    const button = document.createElement("button");
+    button.textContent = "展开";
+    button.onclick = function () { loadReplayNodeDetail(item.nodeRunId); };
+    action.appendChild(button);
+    row.appendChild(action);
+    tbody.appendChild(row);
+  });
+}
+
+async function loadReplay(page) {
+  expireReplayRequests();
+  clearReplayResults();
+  const runId = replayCurrentRunId();
+  const size = Number($("replayPageSize").value);
+  if (!replayUuid(runId)) {
+    replayPage = 0;
+    $("replayStatus").textContent = "请输入有效的 UUID 格式 runId。";
+    updateReplayControls();
+    return;
+  }
+  if (!Number.isInteger(page) || page < 0 || ![10, 50, 200].includes(size)) {
+    $("replayStatus").textContent = "分页参数无效，请重新查询。";
+    updateReplayControls();
+    return;
+  }
+  replayPage = page;
+  replayListLoading = true;
+  const generation = replayRequestGeneration;
+  const controller = new AbortController();
+  replayListRequest = controller;
+  const timeout = setTimeout(function () { controller.abort(); }, 10000);
+  $("replayStatus").textContent = "正在读取运行与节点记录…";
+  updateReplayControls();
+  try {
+    const base = "/api/v1/runs/" + encodeURIComponent(runId);
+    const results = await Promise.all([replayGet(base, controller),
+      replayGet(base + "/nodes?page=" + page + "&size=" + size, controller)]);
+    if (!replayListIsCurrent(generation, runId, controller)) return;
+    const snapshot = results[0];
+    const nodes = results[1];
+    if (String(snapshot.runId).toLowerCase() !== runId || !Array.isArray(nodes.items) || nodes.page !== page ||
+        nodes.size !== size || typeof nodes.hasNext !== "boolean" || nodes.items.length > size ||
+        nodes.items.some(function (item) { return !item || !replayUuid(item.nodeRunId); })) {
+      throw { replayInvalidResponse: true };
+    }
+    replayLoadedRunId = runId;
+    replayHasNext = nodes.hasNext;
+    renderReplaySnapshot(snapshot);
+    renderReplayNodes(nodes.items);
+    $("replayPageInfo").textContent = "第 " + (page + 1) + " 页（page=" + page + "），本页 " + nodes.items.length + " 条";
+    $("replayStatus").textContent = "已读取保存的记录；运行与节点可能分批提交，可手动刷新。";
+  } catch (error) {
+    if (!replayListIsCurrent(generation, runId, controller)) return;
+    controller.abort();
+    clearReplayResults();
+    $("replayStatus").textContent = error && error.name === "AbortError"
+        ? "读取超时（10 秒），请手动重试。" : "查询失败：" + replayErrorLabel(error);
+  } finally {
+    clearTimeout(timeout);
+    if (replayListIsCurrent(generation, runId, controller)) {
+      replayListRequest = null;
+      replayListLoading = false;
+      updateReplayControls();
+    }
+  }
+}
+
+function refreshReplay() {
+  return loadReplay(replayLoadedRunId === replayCurrentRunId() ? replayPage : 0);
+}
+
+function turnReplayPage(direction) {
+  if (replayListLoading || !replayLoadedRunId) return;
+  if (direction === -1 && replayPage > 0) return loadReplay(replayPage - 1);
+  if (direction === 1 && replayHasNext) return loadReplay(replayPage + 1);
+}
+
+function replayDetailIsCurrent(generation, listGeneration, runId, nodeRunId, controller) {
+  return generation === replayDetailGeneration && listGeneration === replayRequestGeneration &&
+      replayLoadedRunId === runId && replayCurrentRunId() === runId &&
+      replaySelectedNodeRunId === nodeRunId && replayDetailRequest === controller;
+}
+
+function replayJson(value) { return value === null || value === undefined ? "（未记录）" : JSON.stringify(value, null, 2); }
+
+async function loadReplayNodeDetail(nodeRunId) {
+  const runId = replayLoadedRunId;
+  if (!runId || runId !== replayCurrentRunId() || replayListLoading || !replayUuid(nodeRunId)) return;
+  clearReplayDetail();
+  replaySelectedNodeRunId = nodeRunId;
+  const generation = replayDetailGeneration;
+  const listGeneration = replayRequestGeneration;
+  const controller = new AbortController();
+  replayDetailRequest = controller;
+  const timeout = setTimeout(function () { controller.abort(); }, 10000);
+  $("replayDetail").hidden = false;
+  $("replayDetailStatus").textContent = "正在读取此节点尝试的快照…";
+  $("replayNodes").querySelectorAll("tbody tr").forEach(function (row) {
+    row.classList.toggle("replay-selected", row.dataset.nodeRunId === nodeRunId);
+  });
+  try {
+    const detail = await replayGet("/api/v1/runs/" + encodeURIComponent(runId) + "/nodes/" + encodeURIComponent(nodeRunId), controller);
+    if (!replayDetailIsCurrent(generation, listGeneration, runId, nodeRunId, controller)) return;
+    if (!detail || String(detail.nodeRunId).toLowerCase() !== nodeRunId.toLowerCase()) throw { replayInvalidResponse: true };
+    $("replayDetailMeta").textContent = [
+      "节点：" + detail.nodeId + "（" + detail.nodeType + "），第 " + detail.attempt + " 次尝试",
+      "状态：" + replayStatusLabel(detail.status, true) + "；总历时（含审批等待）：" + replayElapsed(detail),
+      "开始：" + replayTime(detail.startedAt) + "\n结束：" + replayTime(detail.endedAt),
+      "nodeRunId：" + detail.nodeRunId
+    ].join("\n");
+    const hasError = detail.error !== null && detail.error !== undefined && detail.error !== "";
+    $("replayDetailError").hidden = !hasError;
+    $("replayDetailError").textContent = hasError ? "本次尝试已记录错误：\n" + String(detail.error) : "";
+    $("replayDetailInput").textContent = replayJson(detail.input);
+    $("replayDetailOutput").textContent = replayJson(detail.output);
+    $("replayDetailStatus").textContent = "已读取此节点尝试的保存快照。";
+  } catch (error) {
+    if (!replayDetailIsCurrent(generation, listGeneration, runId, nodeRunId, controller)) return;
+    $("replayDetailStatus").textContent = error && error.name === "AbortError"
+        ? "快照读取超时（10 秒），可再次点击“展开”重试。" : "快照读取失败：" + replayErrorLabel(error);
+  } finally {
+    clearTimeout(timeout);
+    if (replayDetailIsCurrent(generation, listGeneration, runId, nodeRunId, controller)) replayDetailRequest = null;
+  }
+}
+
+async function refreshMemory() {
+  const data = await memoryCall("/api/v1/sessions/" + sessionId + "/memory", "GET");
+  if (!data) return;
+  $("memoryLog").textContent = [
+    "开关：窗口注入 " + (data.enabled ? "开" : "关") + "，滚动摘要 " + (data.summaryEnabled ? "开" : "关")
+        + "（窗口 " + data.windowSize + " 条，攒 " + data.summaryChunkSize + " 条折一次）",
+    "消息 " + data.totalMessages + " 条：窗口内 " + (data.totalMessages - data.foldableCount) + "，可折叠 "
+        + data.foldableCount + "，已折 " + data.summarizedCount + "，待折 " + data.pendingFold,
+    "摘要：" + (data.summary ? data.summaryChars + " 字符（档位 " + (data.model || "-") + "，累计 "
+        + data.tokens + " tokens）" : "（还没有）"),
+    data.attempts ? "连续失败 " + data.attempts + " / " + data.summaryMaxAttempts + "："
+        + (data.lastError || "") : "失败计数：0",
+    "记忆读取失败：" + data.readFailures + " 次",
+    data.summary || ""
+  ].join("\n");
+}
+
+async function previewMemory() {
+  const input = $("message").value.trim() || "（预览用的示例输入）";
+  const data = await memoryCall("/api/v1/sessions/" + sessionId + "/memory/preview?input="
+      + encodeURIComponent(input), "GET");
+  if (!data) return;
+  const lines = data.messages.map(function (message, index) {
+    const tag = message.role === "system"
+        ? (message.content.indexOf("长期记忆") === 0 ? "[长期记忆]"
+          : (data.profileIncluded && index === 0 ? "[画像偏好]" : "[摘要/系统]"))
+        : (index === data.messages.length - 1 ? "[本轮]" : "[" + message.role + "]");
+    return tag + " " + message.chars + " 字符" + (message.truncated ? "（预览截断）" : "") + "\n" + message.content;
+  });
+  $("memoryLog").textContent = "装配结果：画像偏好 " + (data.profileIncluded ? "有" : "无")
+      + "，长期记忆 " + (data.longMemoryIncluded ? "有" : "无")
+      + "，摘要 " + (data.summaryIncluded ? "有" : "无") + "，历史 "
+      + data.historyCount + " 条，共 " + data.messages.length + " 条消息\n\n" + lines.join("\n\n");
+}
+
+async function rebuildMemory() {
+  const data = await memoryCall("/api/v1/sessions/" + sessionId + "/memory/rebuild", "POST");
+  if (!data) return;
+  $("memoryLog").textContent = "摘要已重置（token 累计保留：" + data.tokens + "）；下次运行收口后重算。";
+}
+
+async function memoryCall(path, method) {
+  if (!sessionId) {
+    $("memoryLog").textContent = "请先在第 1 节新建会话。";
+    return null;
+  }
+  const requestedSession = sessionId;
+  const requestToken = userRequestToken;
+  try {
+    const data = await api(path, undefined, method);
+    if (sessionId !== requestedSession || requestToken !== userRequestToken) return null;
+    return data;
+  } catch (e) {
+    if (sessionId === requestedSession && requestToken === userRequestToken) $("memoryLog").textContent = "[memory] " + e.message;
+    return null;
+  }
+}
+
+async function longMemoryCall(path, method, body) {
+  if (!userId) {
+    await ensureUser();
+    if (!userId) {
+      $("longMemoryLog").textContent = "请先在第 1 节创建用户。";
+      return null;
+    }
+  }
+  const requestedUser = userId;
+  const requestToken = userRequestToken;
+  try {
+    const data = await api("/api/v1/users/" + requestedUser + "/memories" + path, body, method);
+    if (userId !== requestedUser || requestToken !== userRequestToken) return null;
+    return data;
+  } catch (e) {
+    if (userId === requestedUser && requestToken === userRequestToken) $("longMemoryLog").textContent = "[long-memory] " + e.message;
+    return null;
+  }
+}
+
+async function refreshLongMemories() {
+  const rows = await longMemoryCall("", "GET");
+  if (!rows) return;
+  const body = $("longMemories").querySelector("tbody");
+  body.innerHTML = "";
+  rows.forEach(function (row) {
+    const tr = document.createElement("tr");
+    [row.kind, row.displayKey, row.value, row.source, row.confidence.toFixed(2), row.hits,
+      row.embeddingFresh ? "当前模型" : (row.embeddingModel || "无向量")].forEach(function (cell) {
+      const td = document.createElement("td");
+      td.textContent = cell;
+      tr.appendChild(td);
+    });
+    const actions = document.createElement("td");
+    const button = document.createElement("button");
+    button.textContent = "删除";
+    button.onclick = function () { deleteLongMemory(row.id); };
+    actions.appendChild(button);
+    tr.appendChild(actions);
+    body.appendChild(tr);
+  });
+  $("longMemoryLog").textContent = "共 " + rows.length + " 条长期记忆（作用域是用户，换个会话照样召回）。"
+    + "\n「向量」列写「当前模型」= 能参与召回；写着别的模型名说明那批向量是旧 embedding 链建的，要重建后才召回。";
+}
+
+async function createLongMemory() {
+  const key = $("memoryKey").value.trim();
+  const value = $("memoryValue").value.trim();
+  if (!key || !value) {
+    $("longMemoryLog").textContent = "key 与 value 都要填。";
+    return;
+  }
+  const data = await longMemoryCall("", "POST", { kind: $("memoryKind").value, key: key, value: value });
+  if (!data) return;
+  $("longMemoryLog").textContent = "已写入（source=" + data.source + "，confidence=" + data.confidence
+    + "）：[" + data.kind + "] " + data.displayKey + "：" + data.value + "\n手工录入永不被抽取覆盖（人工优先）。";
+  $("memoryValue").value = "";
+  await refreshLongMemories();
+}
+
+async function deleteLongMemory(memoryId) {
+  const data = await longMemoryCall("/" + memoryId, "DELETE");
+  if (!data) return;
+  $("longMemoryLog").textContent = "已硬删 " + data.memoryId + "（含它的事件行：删除即无残留）。";
+  await refreshLongMemories();
+}
+
+async function previewLongMemory() {
+  const input = $("longMemoryQuery").value.trim() || $("message").value.trim() || "（预览用的示例输入）";
+  const data = await longMemoryCall("/preview?input=" + encodeURIComponent(input), "GET");
+  if (!data) return;
+  const hits = data.hits.map(function (hit) {
+    return "  " + (hit.injected ? "[注入]" : "[丢弃]") + " " + hit.score.toFixed(4) + " " + hit.chars + " 字符 ["
+      + hit.kind + "] " + hit.displayKey + "：" + hit.value;
+  }).join("\n");
+  const dropped = data.dropped.map(function (drop) {
+    return "  " + drop.score.toFixed(4) + " " + drop.reason + " " + drop.displayKey;
+  }).join("\n");
+  $("longMemoryLog").textContent = [
+    "query：" + data.query,
+    "阈值 " + data.threshold + "（注入开关 " + (data.injectionEnabled ? "开" : "关") + "，字符预算 " + data.maxChars + "）",
+    "命中 " + data.hits.length + " 条：", hits || "  （无）",
+    "被丢弃：" + (data.dropped.length ? "" : "（无）"), dropped,
+    "诊断：" + (data.notes.length ? data.notes.join(", ") : "（无）"),
+    "实际注入块：", data.injectedText || "（空——没有命中或预算不够）"
+  ].join("\n");
+}
+
+function profileTable(id, rows) {
+  const tbody = $(id).querySelector("tbody");
+  tbody.innerHTML = "";
+  rows.forEach(function (values) {
+    const tr = document.createElement("tr");
+    values.forEach(function (value) {
+      const td = document.createElement("td");
+      td.textContent = value;
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+}
+
+function renderProfile(view) {
+  if (profileSnapshot && profileSnapshot.userId === userId && view.version < profileSnapshot.version) return;
+  profileSnapshot = { userId: userId, version: view.version, enabled: view.aggregationEnabled };
+  $("profileTimezone").value = view.timezone;
+  $("profileState").textContent = "画像 " + (view.aggregationEnabled ? "已启用" : "已停用")
+      + "，版本 " + view.version + "，时区 " + view.timezone
+      + "，统计起点 " + (view.statisticsSince || "（尚未启用）")
+      + "，当前窗口 " + (view.windowFrom || "-") + " ～ " + (view.windowTo || "-");
+  const stats = view.statistics;
+  const tokens = stats.tokens;
+  const statuses = Object.entries(stats.statuses || {}).map(function (entry) {
+    return entry[0] + "=" + entry[1];
+  }).join("，");
+  $("profileStats").textContent = "运行 " + stats.runCount + " 次（" + (statuses || "无") + "）；"
+      + "已记录对话 token：mock " + tokens.mockTokens + "，真实 provider " + tokens.realTokens
+      + "，来源未知 " + tokens.unknownProviderTokens + "；已记录节点 " + tokens.recordedNodes
+      + "，用量未知节点 " + tokens.unknownNodes
+      + "。不含摘要、抽取或 embedding，不是全量消费账单；未知用量不计为 0。";
+  profileTable("profileWorkflows", (stats.workflows || []).map(function (item) {
+    return [item.name || item.workflowId, item.version, item.count];
+  }));
+  profileTable("profileHours", (stats.hours || []).map(function (count, hour) {
+    return [String(hour).padStart(2, "0") + ":00", count];
+  }));
+  profileTable("profileTools", (stats.tools || []).map(function (item) {
+    return [item.toolId, item.kind, item.success, item.replayed, item.failed, item.denied, item.unknown];
+  }));
+  const coverage = view.toolCoverage;
+  $("profileCoverage").textContent = "工具审计 " + (coverage.auditEnabled ? "开" : "关")
+      + "，持久化 " + (coverage.persistent ? "开" : "关") + "，保留 " + coverage.retentionDays + " 天；"
+      + "本实例待写 " + coverage.pendingWrites + "，丢写 " + coverage.droppedWrites
+      + "，失败批次 " + coverage.failedWriteBatches + "。复用不是新调用，审计覆盖可能不完整。"
+      + (coverage.reason ? " 原因：" + coverage.reason : "");
+}
+
+async function profileCall(path, body, method) {
+  if (!userId) {
+    $("profileLog").textContent = "请先在第 1 节创建/获取用户。";
+    return null;
+  }
+  const requestedUser = userId;
+  const requestToken = userRequestToken;
+  try {
+    const data = await api("/api/v1/users/" + requestedUser + "/profile" + path, body, method);
+    if (userId !== requestedUser || requestToken !== userRequestToken) return null;
+    return data;
+  } catch (e) {
+    if (userId === requestedUser && requestToken === userRequestToken) $("profileLog").textContent = "[profile] " + e.message;
+    return null;
+  }
+}
+
+async function refreshProfile() {
+  const data = await profileCall("", undefined, "GET");
+  if (data) renderProfile(data);
+}
+
+async function currentProfile() {
+  if (!profileSnapshot || profileSnapshot.userId !== userId) await refreshProfile();
+  return profileSnapshot && profileSnapshot.userId === userId ? profileSnapshot : null;
+}
+
+async function updateProfile(enabled) {
+  const snapshot = await currentProfile();
+  if (!snapshot) return;
+  const timezone = $("profileTimezone").value.trim();
+  const data = await profileCall("", {
+    aggregationEnabled: enabled === null ? snapshot.enabled : enabled,
+    timezone: timezone,
+    expectedVersion: snapshot.version
+  }, "PUT");
+  if (data) {
+    renderProfile(data);
+    $("profileLog").textContent = data.aggregationEnabled
+        ? "画像已启用。时区更新保持本次统计起点；从停用再启用会开始新的统计窗口。"
+        : "画像已停用：停止统计与画像偏好应用，原记录和长期记忆保留。";
+    await refreshProfilePreview();
+  } else {
+    await refreshProfile();
+  }
+}
+
+async function resetProfile() {
+  const snapshot = await currentProfile();
+  if (!snapshot) return;
+  const data = await profileCall("?expectedVersion=" + snapshot.version, undefined, "DELETE");
+  if (data) {
+    renderProfile(data);
+    $("profileLog").textContent = "统计视图已重置并停用。原运行、审计与长期记忆条目保留；再次启用从新起点统计。";
+  } else {
+    await refreshProfile();
+  }
+}
+
+async function saveProfilePreference(key, fieldId) {
+  if (!userId) {
+    $("profileLog").textContent = "请先在第 1 节创建/获取用户。";
+    return;
+  }
+  const requestedUser = userId;
+  const requestToken = userRequestToken;
+  try {
+    await api("/api/v1/users/" + requestedUser + "/memories", {
+      kind: "PREFERENCE", key: key, value: $(fieldId).value
+    }, "POST");
+    if (userId !== requestedUser || requestToken !== userRequestToken) return;
+    await refreshLongMemories();
+    await refreshProfilePreview();
+  } catch (e) {
+    if (userId === requestedUser && requestToken === userRequestToken) $("profileLog").textContent = "[profile] 保存偏好失败：" + e.message;
+  }
+}
+
+async function refreshProfilePreview() {
+  const model = $("profilePreviewModel").value.trim();
+  let query = "?profilePreference=" + encodeURIComponent($("profilePreferenceMode").value);
+  if (model) query += "&model=" + encodeURIComponent(model);
+  const data = await profileCall("/preview" + query, undefined, "GET");
+  if (!data) return;
+  const preferences = (data.preferences || []).map(function (item) {
+    return (item.applied ? "[生效] " : "[忽略] ") + item.key + "=" + item.value
+        + "，来源 " + item.source + " / " + item.kind + "，memoryId=" + item.memoryId
+        + "，原因 " + item.reason;
+  });
+  $("profileLog").textContent = [
+    "画像 " + (data.profileEnabled ? "开" : "关") + "，工作流允许 " + (data.workflowAllowed ? "是" : "否"),
+    "回复风格 " + (data.responseStyle || "未应用") + "，模型策略 " + (data.modelPolicy || "未应用")
+        + "，便宜档优先 " + (data.preferCheapTiers ? "是" : "否"),
+    "偏好来源与判定：", preferences.join("\n") || "（无枚举偏好）",
+    "注入说明：", data.stylePrompt || "（无）",
+    "诊断：" + ((data.notes || []).join(", ") || "（无）"),
+    "能力约束、熔断、硬额度、工作流禁用及工具权限继续生效。"
+  ].join("\n");
+}
+
+async function refreshCapabilities() {
+  const capabilityGeneration = ++capabilityRequestGeneration;
+  audioCapabilityState.loading = true;
+  setAudioCapabilityState(false, false, false, "ASR 能力检查中", "TTS 能力检查中",
+      "刷新能力期间不可操作", "刷新能力期间不可操作", "unavailable", "unavailable");
+  try {
+    const data = await api("/api/v1/capabilities", undefined, "GET");
+    if (capabilityGeneration !== capabilityRequestGeneration) return;
+    const badge = $("capLevel");
+    badge.textContent = data.level;
+    badge.className = "badge " + (data.level === "L1" || data.level === "L0" ? "ok"
+        : (data.level === "L2" ? "degraded" : "unavailable"));
+    $("capLevelName").textContent = data.levelName;
+    $("capNotice").textContent = data.notice || "";
+    const tbody = $("capChannels").querySelector("tbody");
+    tbody.innerHTML = "";
+    (data.channels || []).forEach(function (channel) {
+      const tr = document.createElement("tr");
+      const candidateText = (channel.candidates || []).map(function (candidate) {
+        return (candidate.available ? "✓ " : "✗ ") + candidate.id + "(" + candidate.tier + ")"
+            + (candidate.available ? "" : " - " + (candidate.detail || ""));
+      }).join("\n");
+      [channel.channel, channel.status, channel.activeProvider || "-", candidateText].forEach(function (value, index) {
+        const td = document.createElement("td");
+        if (index === 1) {
+          const span = document.createElement("span");
+          span.className = "badge " + audioBadgeClass(value);
+          span.textContent = value;
+          td.appendChild(span);
+        } else {
+          td.style.whiteSpace = "pre-line";
+          td.textContent = value;
+        }
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    const channels = Array.isArray(data.channels) ? data.channels : [];
+    const asr = channels.find(function (channel) { return channel.channel === "asr"; });
+    const tts = channels.find(function (channel) { return channel.channel === "tts"; });
+    const asrAvailable = audioChannelAvailable(asr);
+    const ttsAvailable = audioChannelAvailable(tts);
+    setAudioCapabilityState(true, asrAvailable, ttsAvailable,
+        asrAvailable ? "ASR " + asr.status : "ASR 不可用",
+        ttsAvailable ? "TTS " + tts.status : "TTS 不可用",
+        audioChannelMessage(asr, "ASR"), audioChannelMessage(tts, "TTS"),
+        asr ? asr.status : "unavailable", tts ? tts.status : "unavailable");
+  } catch (e) {
+    if (capabilityGeneration !== capabilityRequestGeneration) return;
+    $("capNotice").textContent = "读档位失败，请检查服务状态后重试";
+    setAudioCapabilityState(false, false, false, "ASR 不可用", "TTS 不可用",
+        "能力接口读取失败，已禁用", "能力接口读取失败，已禁用", "unavailable", "unavailable");
+  } finally {
+    if (capabilityGeneration === capabilityRequestGeneration) {
+      audioCapabilityState.loading = false;
+      updateAudioButtonState();
+    }
+  }
+}
+
+async function refreshTools() {
+  try {
+    const data = await api("/api/v1/tools", undefined, "GET");
+    $("toolSummary").textContent = "总闸 " + (data.enabled ? "开" : "关") + "，白名单 " + data.count + " 个工具；"
+        + "MCP " + data.mcp.toolCount + " 个（服务端 " + (data.mcp.enabled ? "启用" : "关闭") + "）；"
+        + "技能库 " + data.skills.count + " 个（根目录 " + data.skills.roots.length + "）";
+    const failures = Object.entries(data.mcp.failures || {});
+    $("toolFailures").textContent = failures.length
+        ? "MCP 启动失败：" + failures.map(function (e) { return e[0] + " -> " + e[1]; }).join("；") : "";
+    const tbody = $("toolTable").querySelector("tbody");
+    tbody.innerHTML = "";
+    (data.tools || []).forEach(function (tool) {
+      const tr = document.createElement("tr");
+      [tool.id, tool.kind, tool.mutating ? "是" : "否", tool.description || ""].forEach(function (value) {
+        const td = document.createElement("td");
+        td.textContent = value;
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+  } catch (e) {
+    $("toolSummary").textContent = "读工具清单失败：" + e.message;
+  }
+}
+
+async function reloadTools() {
+  try {
+    const data = await api("/api/v1/tools/reload", {}, "POST");
+    log("[tools] 已重新发现：" + JSON.stringify(data));
+    await refreshTools();
+  } catch (e) {
+    log("[tools] 重新发现失败：" + e.message);
+  }
+}
+
+function log(line) {
+  const pre = $("events");
+  pre.textContent += line + "\n";
+  pre.scrollTop = pre.scrollHeight;
+}
+
+async function ensureUser() {
+  const requestedExternalId = $("externalId").value;
+  const requestToken = ++userRequestToken;
+  try {
+    const data = await api("/api/v1/users", { externalId: requestedExternalId, displayName: requestedExternalId });
+    // 用户输入或另一项请求已经切换时，旧响应不能覆盖当前控制台上下文。
+    if (requestToken !== userRequestToken || $("externalId").value !== requestedExternalId) return;
+    if (userId !== data.id) {
+      profileSnapshot = null;
+      sessionId = null;
+      $("sessionId").textContent = "";
+      if (source) { source.close(); source = null; }
+      attachmentIds = [];
+      $("attachmentList").textContent = "";
+      $("preview").style.display = "none";
+      $("profileLog").textContent = "用户已切换，请查看当前用户的画像或偏好预览。";
+      $("longMemories").querySelector("tbody").innerHTML = "";
+      $("longMemoryLog").textContent = "用户已切换，点「刷新列表」查看当前用户的长期记忆。";
+      $("memoryLog").textContent = "用户已切换，请新建会话后查看记忆状态或装配预览。";
+      $("profileState").textContent = "正在读取当前用户画像…";
+      $("profileStats").textContent = "";
+      $("profileCoverage").textContent = "";
+      ["profileWorkflows", "profileHours", "profileTools"].forEach(function (id) { profileTable(id, []); });
+    }
+    userId = data.id;
+    $("userId").textContent = "userId=" + userId;
+    log("[user] " + JSON.stringify(data));
+    await refreshProfile();
+  } catch (e) {
+    if (requestToken === userRequestToken && $("externalId").value === requestedExternalId) {
+      log("[error] " + e.message);
+    }
+  }
+}
+
+async function createSession() {
+  try {
+    if (!userId) await ensureUser();
+    if (!userId) return;
+    const requestedUser = userId;
+    const requestToken = userRequestToken;
+    const data = await api("/api/v1/sessions", { userId: requestedUser, workflowName: $("workflowName").value });
+    if (userId !== requestedUser || requestToken !== userRequestToken) return;
+    sessionId = data.id;
+    $("sessionId").textContent = "sessionId=" + sessionId;
+    log("[session] " + JSON.stringify(data));
+  } catch (e) {
+    log("[error] " + e.message);
+  }
+}
+
+async function ingestText() {
+  try {
+    const data = await api("/api/v1/kbs/" + $("kbId").value + "/documents", {
+      title: $("docTitle").value,
+      content: $("docContent").value,
+      sourceType: "MARKDOWN"
+    });
+    log("[ingest] " + JSON.stringify(data));
+  } catch (e) {
+    log("[error] " + e.message);
+  }
+}
+
+async function uploadDocument() {
+  try {
+    const file = $("file").files[0];
+    if (!file) { log("[error] 先选择一个文件"); return; }
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch("/api/v1/kbs/" + $("kbId").value + "/documents/upload", { method: "POST", body: form });
+    const json = await res.json();
+    if (json.code !== 0) throw new Error(json.code + " " + json.message);
+    log("[upload] " + JSON.stringify(json.data));
+  } catch (e) {
+    log("[error] " + e.message);
+  }
+}
+
+async function listDocuments() {
+  try {
+    const data = await api("/api/v1/kbs/" + $("kbId").value + "/documents", undefined, "GET");
+    log("[documents] " + JSON.stringify(data));
+  } catch (e) {
+    log("[error] " + e.message);
+  }
+}
+
+async function retrieve() {
+  try {
+    const minScoreInput = $("minScore").value.trim();
+    const data = await api("/api/v1/kbs/" + $("kbId").value + "/retrieve", {
+      query: $("query").value,
+      topK: Number($("topK").value),
+      // 留空就不传：让服务端用它自己校准过的阈值，而不是被前端的默认值悄悄覆盖
+      minScore: minScoreInput === "" ? undefined : Number(minScoreInput),
+      includeContext: true
+    });
+    log("[retrieve] stats=" + JSON.stringify(data.stats) + " citations=" + JSON.stringify(data.citations));
+    const body = $("chunks").querySelector("tbody");
+    body.innerHTML = "";
+    data.chunks.forEach(function (chunk) {
+      const row = body.insertRow();
+      row.insertCell().textContent = chunk.index;
+      row.insertCell().textContent = chunk.docId;
+      row.insertCell().textContent = chunk.score;
+      row.insertCell().textContent = chunk.citation;
+      row.insertCell().textContent = (chunk.snippet || "").slice(0, 60);
+    });
+    if (data.contextBlock) log("[context]\n" + data.contextBlock);
+  } catch (e) {
+    log("[error] " + e.message);
+  }
+}
+
+async function reindex() {
+  try {
+    const data = await api("/api/v1/kbs/" + $("kbId").value + "/reindex", {});
+    log("[reindex] " + JSON.stringify(data));
+  } catch (e) {
+    log("[error] " + e.message);
+  }
+}
+
+async function uploadImage() {
+  try {
+    const file = $("image").files[0];
+    if (!file) { log("[error] 先选择一张图片"); return; }
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch("/api/v1/attachments", { method: "POST", body: form });
+    const json = await res.json();
+    if (json.code !== 0) throw new Error(json.code + " " + json.message);
+    attachmentIds.push(json.data.attachmentId);
+    $("attachmentList").textContent = "附件：" + attachmentIds.join(", ");
+    $("preview").src = json.data.url;
+    $("preview").style.display = "block";
+    log("[attachment] " + JSON.stringify(json.data));
+  } catch (e) {
+    log("[error] " + e.message);
+  }
+}
+
+async function send() {
+  try {
+    if (!sessionId) await createSession();
+    const content = $("message").value;
+    const payload = { clientMsgId: "web-" + Date.now(), content: content };
+    if (attachmentIds.length) payload.attachmentIds = attachmentIds;
+    const accepted = await api("/api/v1/sessions/" + sessionId + "/messages", payload);
+    setReplayRunId(accepted.runId);
+    attachmentIds = [];
+    $("attachmentList").textContent = "";
+    $("preview").style.display = "none";
+    log("[accepted] runId=" + accepted.runId);
+    $("status").textContent = "运行中…";
+    if (source) source.close();
+    source = new EventSource("/api/v1/runs/" + accepted.runId + "/events");
+    ["RUN_STARTED","NODE_STARTED","NODE_SUCCEEDED","NODE_DEGRADED","NODE_FAILED","NODE_RETRY",
+     "NODE_SUSPENDED","RUN_WAITING","APPROVAL_REQUESTED","APPROVAL_DECIDED","APPROVAL_EXPIRED","APPROVAL_ESCALATED",
+     "RUN_SUCCEEDED","RUN_DEGRADED","RUN_FAILED","RUN_CANCELED"].forEach(function (type) {
+      source.addEventListener(type, function (event) {
+        const payload = event.data ? JSON.parse(event.data) : {};
+        if (payload.data && payload.data.output) {
+          const output = payload.data.output;
+          log("[" + type + "] reply=" + (output.reply || output.fallback || "") +
+              (output.provider ? " provider=" + output.provider : "") +
+              (output.imageCount ? " imageCount=" + output.imageCount : "") +
+              (output.citations ? " citations=" + JSON.stringify(output.citations) : ""));
+        } else {
+          log("[" + type + "] " + event.data);
+        }
+        if (type === "RUN_WAITING") {
+          $("status").textContent = "等待人工审批（到第 4 节处理待办）";
+          refreshApprovals();
+        }
+        if (type.startsWith("APPROVAL_")) {
+          refreshApprovals();
+        }
+        if (type.startsWith("RUN_") && type !== "RUN_STARTED" && type !== "RUN_WAITING") {
+          $("status").textContent = "已结束：" + type;
+          source.close();
+        }
+      });
+    });
+    source.addEventListener("DELTA", function (event) {
+      const data = JSON.parse(event.data);
+      if (data.data && data.data.text) {
+        $("status").textContent = "流式输出中… " + data.data.text;
+      }
+    });
+    source.onerror = function () {
+      $("status").textContent = "SSE 连接中断（浏览器自动重连并携带 Last-Event-ID）";
+    };
+  } catch (e) {
+    log("[error] " + e.message);
+  }
+}
+function shortId(value) { return value ? String(value).slice(0, 8) : "-"; }
+
+function dueText(dueAt) {
+  if (!dueAt) return "-";
+  const seconds = Math.round((Date.parse(dueAt) - Date.now()) / 1000);
+  return seconds >= 0 ? "剩 " + seconds + "s" : "已超时 " + (-seconds) + "s";
+}
+
+async function refreshApprovals() {
+  const tbody = $("approvalTable").querySelector("tbody");
+  try {
+    const assignee = $("approvalAssignee").value.trim();
+    const data = await api("/api/v1/approvals?assignee=" + encodeURIComponent(assignee), undefined, "GET");
+    tbody.innerHTML = "";
+    (data.approvals || []).forEach(function (item) {
+      const tr = document.createElement("tr");
+      [shortId(item.approvalId), shortId(item.runId), item.level, item.title || "-", dueText(item.dueAt),
+       (item.assignees || []).join("/")].forEach(function (value) {
+        const td = document.createElement("td");
+        td.textContent = value;
+        tr.appendChild(td);
+      });
+      const actions = document.createElement("td");
+      [["批准", "APPROVE"], ["拒绝", "REJECT"]].forEach(function (pair) {
+        const button = document.createElement("button");
+        button.textContent = pair[0];
+        button.onclick = function () { decideApproval(item.approvalId, pair[1]); };
+        actions.appendChild(button);
+        actions.appendChild(document.createTextNode(" "));
+      });
+      const events = document.createElement("button");
+      events.textContent = "事件";
+      events.onclick = function () { loadApprovalDetail(item.approvalId); };
+      actions.appendChild(events);
+      tr.appendChild(actions);
+      tbody.appendChild(tr);
+    });
+    $("approvalStatusLine").textContent = "待办 " + data.count + " 条（assignee=" + (assignee || "全部")
+        + "，超时扫描 " + (data.sweepEnabled ? "开" : "关") + "）";
+  } catch (e) {
+    log("[approval][error] " + e.message);
+  }
+}
+
+async function decideApproval(approvalId, decision) {
+  const token = authToken();
+  const decidedBy = $("approvalDecidedBy").value.trim();
+  const comment = $("approvalComment").value.trim();
+  if (!token && !decidedBy) {
+    log("[approval][error] decidedBy 不能为空（谁批的要留痕）");
+    return;
+  }
+  try {
+    // 带令牌时身份由服务端决定：自报不一致会被 400，所以干脆不发
+    const body = token ? { decision: decision } : { decision: decision, decidedBy: decidedBy };
+    if (comment) body.comment = comment;
+    const view = await api("/api/v1/approvals/" + approvalId + "/decision", body);
+    log("[approval] " + decision + " " + view.approvalId + " -> " + view.status + " by " + (view.decidedBy || "-"));
+    $("approvalRunId").value = view.runId;
+    await refreshApprovals();
+    await refreshApprovalChain();
+  } catch (e) {
+    log("[approval][error] " + e.message);
+  }
+}
+
+async function refreshApprovalChain() {
+  const runId = $("approvalRunId").value.trim();
+  const tbody = $("approvalChain").querySelector("tbody");
+  tbody.innerHTML = "";
+  if (!runId) {
+    log("[approval][error] 先填 runId（点待办行的批准 / 拒绝会自动回填）");
+    return;
+  }
+  try {
+    const views = await api("/api/v1/runs/" + encodeURIComponent(runId) + "/approvals", undefined, "GET");
+    views.forEach(function (item) {
+      const tr = document.createElement("tr");
+      [item.nodeId, item.level, item.status, item.decision || "-", item.decidedBy || "-",
+       Math.round((item.waitedMs || 0) / 1000) + "s"].forEach(function (value) {
+        const td = document.createElement("td");
+        td.textContent = value;
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+  } catch (e) {
+    log("[approval][error] " + e.message);
+  }
+}
+
+async function loadApprovalDetail(approvalId) {
+  try {
+    const detail = await api("/api/v1/approvals/" + approvalId, undefined, "GET");
+    const lines = ["审批 " + detail.approval.approvalId + "  " + detail.approval.status + "  层 " + detail.approval.level
+        + "  标题 " + (detail.approval.title || "-")];
+    (detail.events || []).forEach(function (event) {
+      lines.push("  " + event.at + "  " + event.event + "  " + (event.actor || "-")
+          + (event.comment ? "  " + event.comment : ""));
+    });
+    $("approvalLog").textContent = lines.join("\n");
+    $("approvalRunId").value = detail.approval.runId;
+  } catch (e) {
+    log("[approval][error] " + e.message);
+  }
+}
+
+async function refreshApprovalNotify() {
+  const tbody = $("approvalNotify").querySelector("tbody");
+  try {
+    const data = await api("/api/v1/approvals/notify", undefined, "GET");
+    tbody.innerHTML = "";
+    (data.channels || []).forEach(function (channel) {
+      const tr = document.createElement("tr");
+      const detail = Object.keys(channel)
+        .filter(function (key) { return key !== "channel" && key !== "enabled"; })
+        .map(function (key) { return key + "=" + channel[key]; })
+        .join("  ");
+      [channel.channel, channel.enabled ? "是" : "否", detail].forEach(function (value) {
+        const td = document.createElement("td");
+        td.textContent = value;
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    $("approvalNotifyCounters").textContent = "enabled=" + data.enabled
+        + "  active=[" + (data.activeChannels || []).join(",") + "]"
+        + "  queue=" + data.queueDepth + "/" + data.queueCapacity
+        + "  enqueued=" + data.enqueued + "  sent=" + data.sent + "  failed=" + data.failed
+        + "  deduped=" + data.deduped + "  dropped=" + data.dropped
+        + (data.lastError ? "  lastError=" + data.lastError : "");
+  } catch (e) {
+    log("[approval][error] " + e.message);
+  }
+}
+
+async function refreshAuth() {
+  try {
+    const data = await api("/api/v1/auth/whoami", undefined, "GET");
+    if (!data.enabled) {
+      $("authWhoami").textContent = "服务端未开鉴权：decidedBy 由自报决定，审批人名单不是安全边界";
+    } else if (data.authenticated) {
+      $("authWhoami").textContent = "已认证：" + data.subject.id + "（" + data.subject.displayName + "）";
+    } else {
+      $("authWhoami").textContent = "服务端已开鉴权：当前匿名，审批 / 取消会被 401 —— 把令牌填到左边";
+    }
+  } catch (e) {
+    log("[auth][error] " + e.message);
+  }
+}
+
+window.addEventListener("pagehide", function () {
+  expireReplayRequests();
+  if (audioAsrRequest) audioAsrRequest.abort();
+  if (audioTtsRequest) audioTtsRequest.abort();
+  audioAsrRequest = null;
+  audioTtsRequest = null;
+  audioAsrGeneration++;
+  audioTtsGeneration++;
+  releaseAudioObjectUrl();
+  updateAudioButtonState();
+});
+window.addEventListener("load", function () { refreshCapabilities(); refreshTools(); refreshApprovals(); refreshApprovalNotify(); refreshAuth(); });
+</script>
+</body>
+</html>

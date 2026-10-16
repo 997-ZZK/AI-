@@ -1,0 +1,62 @@
+{
+  "id": "rag-chat",
+  "name": "rag-chat",
+  "version": 2,
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "name": "开始"
+    },
+    {
+      "id": "retrieve",
+      "type": "retrieval.search",
+      "name": "检索知识库",
+      "requires": ["embedding"],
+      "params": {
+        "query": "${input}",
+        "kbId": "demo",
+        "topK": 6,
+        "sources": "local,cloud",
+        "fallback": "抱歉，知识库暂时不可用，请稍后再试。"
+      },
+      "retry": {
+        "maxAttempts": 2,
+        "backoffMillis": 200
+      },
+      "timeoutSeconds": 30
+    },
+    {
+      "id": "answer",
+      "type": "llm.chat",
+      "name": "生成回答",
+      "requires": ["chat"],
+      "params": {
+        "prompt": "${context}\n\n请依据上面的资料回答问题，并在对应句子末尾标注引用编号；资料不足时直接说明「资料中没有」。\n\n问题：${input}",
+        "fallback": "抱歉，当前无法连接模型服务，请稍后再试。"
+      },
+      "retry": {
+        "maxAttempts": 2,
+        "backoffMillis": 300
+      },
+      "timeoutSeconds": 60
+    },
+    {
+      "id": "end",
+      "type": "end",
+      "name": "结束",
+      "params": {
+        "outputs": {
+          "reply": "reply",
+          "citations": "citations",
+          "fallback": "fallback"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {"from": "start", "to": "retrieve"},
+    {"from": "retrieve", "to": "answer"},
+    {"from": "answer", "to": "end"}
+  ]
+}

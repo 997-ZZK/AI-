@@ -1,0 +1,75 @@
+{"kind":"doc","docId":"handbook-onboarding","title":"入职手册","content":"# 入职手册\n\n## 报到材料\n新员工报到当天需携带身份证原件、学历证书复印件、一寸照片两张，在前台登记并领取工牌。材料不齐的可以先入职，三个工作日内补齐。\n\n## 办公设备\n入职当天由 IT 发放笔记本电脑、显示器与门禁卡，设备编号登记在资产系统。设备人为损坏需要按残值赔偿，离职当天归还。\n\n## 试用期\n试用期为三个月，转正需要提交转正申请，由直属主管与导师共同评估。评估不通过可延长一次，最长不超过一个月。\n\n## 导师制度\n每位新员工配一名导师，导师负责前两周的业务讲解，并保持每周一次沟通记录。导师带教情况计入其季度考核。\n\n## 工牌与门禁\n工牌遗失需先在前台挂失，再补办新卡，补办工本费二十元。门禁权限由行政统一开通，访客临时权限当天有效。"}
+{"kind":"doc","docId":"handbook-attendance","title":"考勤与请假制度","content":"# 考勤与请假制度\n\n## 打卡\n上班时间为九点三十分，弹性到十点，下班不早于十八点三十分。每天需在考勤系统打卡两次，忘记打卡当月可申诉两次。\n\n## 迟到\n每月迟到累计超过三次，绩效考勤项扣分。因地铁故障等公共交通原因迟到，可提交证明申诉免除扣分。\n\n## 年假\n入职满一年享有五天年假，满三年十天，满五年十五天。年假需提前三个工作日申请，原则上不跨年度使用。\n\n## 病假\n病假需提供医院证明，连续病假超过三天还需要提交就诊记录与检查报告。长期病假超过一个月按医疗期规定处理。\n\n## 加班调休\n加班需提前申请并说明事由，调休有效期三个月，过期自动作废。法定节假日加班可折算为双倍调休。"}
+{"kind":"doc","docId":"handbook-expense","title":"报销制度","content":"# 报销制度\n\n## 差旅标准\n一线城市住宿标准每晚五百元，二线城市每晚三百五十元。跨城出行乘坐高铁二等座，市内交通凭票报销。\n\n## 发票要求\n发票抬头必须为公司全称，并注明税号。电子发票需要打印报销封面，机票行程单与登机牌一并附上。\n\n## 审批流程\n报销单由直属主管审批后转财务，单笔超过五千元需部门负责人加签，超过两万元需要财务总监审批。\n\n## 报销时限\n费用发生之日起三十天内提交报销，跨年度费用需在次年一月十日前完成，逾期需要说明原因。"}
+{"kind":"doc","docId":"it-security","title":"信息安全规范","content":"# 信息安全规范\n\n## 密码策略\n账号密码至少十二位，包含大小写字母、数字与符号，每九十天更换一次，禁止复用最近五次使用过的密码。\n\n## 数据分级\n数据分为公开、内部、机密三级。机密数据外发必须走审批流程并加密，禁止通过个人网盘传输。\n\n## VPN 使用\n远程访问内网必须连接 VPN，禁止在公共无线网络下直接访问生产数据库。VPN 账号不得共享给他人。\n\n## 外发审批\n对外发送包含客户信息的文件需提交外发审批单，审批通过后使用加密邮件发送，并抄送信息安全负责人。\n\n## 离职交接\n离职当天回收工牌与设备，账号在最后一个工作日十八点停用，代码与文档权限同步回收。"}
+{"kind":"doc","docId":"product-aiflow","title":"AIFlow 产品说明","content":"# AIFlow 产品说明\n\n## 产品定位\nAIFlow 是面向企业内部的 LLM 工作流引擎，把模型调用、知识检索与工具编排成可运行的流程，从聊天走向干活。\n\n## 核心概念\n工作流由节点与边组成，节点类型包括 start、llm.chat、retrieval.search 与 end。每次执行生成一个 runId，客户端可用它订阅执行事件。\n\n## 部署形态\n支持单机 Docker Compose 部署与多实例部署。多实例部署需要打开 Redis 会话锁，保证同一会话严格串行，跨会话并行执行。\n\n## 能力边界\n当前版本不提供模型训练能力，只做推理编排。向量维度固定为一千零二十四维，不匹配的 provider 会直接失败。\n\n## 可观测\n每次运行写入 node_runs 快照，节点级输入输出可回放。执行事件通过 SSE 推送，断线后可用 Last-Event-ID 续传。"}
+{"kind":"doc","docId":"product-rag","title":"RAG 检索说明","content":"# RAG 检索说明\n\n## 切片策略\n文档按标题层级与空行切片，目标长度四百字，切片之间保留八十字重叠，避免答案被切断。\n\n## 向量与阈值\n检索使用一千零二十四维向量，相似度低于阈值的切片会被丢弃，默认阈值为零点三五，可按知识库调整。\n\n## 动态 top-k\n召回结果按分数排序后检测相似度断崖，断崖之后的分片被截断，最少保留一条，最多保留八条。\n\n## MMR 去冗余\n使用 MMR 降低重复内容，参数 lambda 默认零点七，在相关性与多样性之间取平衡。\n\n## 引用溯源\n提示词中的资料按 [1][2] 编号，回答需要标注引用编号，节点输出保留切片编号、来源与分数，便于审计。"}
+{"kind":"doc","docId":"ops-oncall","title":"值班与告警","content":"# 值班与告警\n\n## 值班安排\n每周安排一名主值班与一名备值班，值班表在周一同步。主值班需要在十五分钟内响应告警并给出初步结论。\n\n## 告警分级\n告警分为 P0 到 P3。P0 表示核心链路不可用，需要立即拉起应急群；P3 为提示类，可在工作日处理。\n\n## 升级路径\nP0 告警十五分钟未响应会自动升级到技术负责人，三十分钟未恢复则同步通知业务方与客服团队。\n\n## 复盘要求\n所有 P0 与 P1 事故需要在三个工作日内提交复盘报告，报告包含时间线、根因、改进项与责任人。"}
+{"kind":"doc","docId":"hr-training","title":"培训与晋升","content":"# 培训与晋升\n\n## 培训预算\n每位员工每年有三千元培训预算，可用于课程与认证考试，需提前申请并在结束后提交学习总结。\n\n## 晋升周期\n晋升评审每年两次，分别在四月和十月。申请晋升需连续两个季度绩效达标，且当前岗位任职满一年。\n\n## 答辩材料\n晋升答辩需要提交项目报告与自评材料，报告包含目标、方案、结果与数据四部分，答辩时长二十分钟。\n\n## 新员工培训\n新员工入职首月需要完成安全与合规两门必修课，未完成的会影响转正评估结果。"}
+{"kind":"doc","docId":"finance-policy","title":"采购与合同","content":"# 采购与合同\n\n## 采购额度\n单笔采购低于一万元由部门负责人审批，一万元到五万元需要财务与法务会签，超过五万元提交经营会讨论。\n\n## 供应商准入\n新供应商需要提交营业执照与银行账户信息，通过准入审核后才能下单，每年复核一次资质。\n\n## 合同用印\n合同用印需要在系统提交用印申请，附合同终稿与审批记录，用印完成后由行政归档保存。\n\n## 付款周期\n标准付款周期为验收后三十天，预付款比例不超过合同金额的百分之三十，尾款需在质保期结束后支付。"}
+{"kind":"question","id":"q-01","q":"新员工报到当天需要携带哪些材料？","answerable":true,"gold":[{"docId":"handbook-onboarding","keyword":"身份证原件"}]}
+{"kind":"question","id":"q-02","q":"入职后办公设备的编号登记在哪里？","answerable":true,"gold":[{"docId":"handbook-onboarding","keyword":"资产系统"}]}
+{"kind":"question","id":"q-03","q":"试用期是多长时间？","answerable":true,"gold":[{"docId":"handbook-onboarding","keyword":"三个月"}]}
+{"kind":"question","id":"q-04","q":"新员工导师需要做什么？","answerable":true,"gold":[{"docId":"handbook-onboarding","keyword":"导师负责前两周"}]}
+{"kind":"question","id":"q-05","q":"工牌丢了应该怎么处理？","answerable":true,"gold":[{"docId":"handbook-onboarding","keyword":"挂失"}]}
+{"kind":"question","id":"q-06","q":"每天需要在考勤系统打卡几次？","answerable":true,"gold":[{"docId":"handbook-attendance","keyword":"打卡两次"}]}
+{"kind":"question","id":"q-07","q":"每月迟到累计超过几次会影响绩效考勤项？","answerable":true,"gold":[{"docId":"handbook-attendance","keyword":"三次"}]}
+{"kind":"question","id":"q-08","q":"入职满一年可以享受多少天年假？","answerable":true,"gold":[{"docId":"handbook-attendance","keyword":"五天年假"}]}
+{"kind":"question","id":"q-09","q":"连续病假超过三天需要提交什么材料？","answerable":true,"gold":[{"docId":"handbook-attendance","keyword":"医院证明"}]}
+{"kind":"question","id":"q-10","q":"调休的有效期是多久？","answerable":true,"gold":[{"docId":"handbook-attendance","keyword":"调休有效期三个月"}]}
+{"kind":"question","id":"q-11","q":"一线城市出差的住宿报销标准是多少？","answerable":true,"gold":[{"docId":"handbook-expense","keyword":"五百元"}]}
+{"kind":"question","id":"q-12","q":"发票抬头需要注明什么？","answerable":true,"gold":[{"docId":"handbook-expense","keyword":"税号"}]}
+{"kind":"question","id":"q-13","q":"报销单超过多少钱需要部门负责人加签？","answerable":true,"gold":[{"docId":"handbook-expense","keyword":"五千元"}]}
+{"kind":"question","id":"q-14","q":"报销需要在费用发生后多少天内提交？","answerable":true,"gold":[{"docId":"handbook-expense","keyword":"三十天"}]}
+{"kind":"question","id":"q-15","q":"跨城出差乘坐高铁的标准是什么？","answerable":true,"gold":[{"docId":"handbook-expense","keyword":"高铁二等座"}]}
+{"kind":"question","id":"q-16","q":"账号密码的复杂度要求是什么？","answerable":true,"gold":[{"docId":"it-security","keyword":"十二位"}]}
+{"kind":"question","id":"q-17","q":"机密数据外发需要满足什么条件？","answerable":true,"gold":[{"docId":"it-security","keyword":"机密数据外发必须走审批"}]}
+{"kind":"question","id":"q-18","q":"远程访问公司内网需要先连接什么？","answerable":true,"gold":[{"docId":"it-security","keyword":"VPN"}]}
+{"kind":"question","id":"q-19","q":"对外发送含客户信息的文件需要提交什么？","answerable":true,"gold":[{"docId":"it-security","keyword":"外发审批单"}]}
+{"kind":"question","id":"q-20","q":"离职员工的账号什么时候停用？","answerable":true,"gold":[{"docId":"it-security","keyword":"十八点停用"}]}
+{"kind":"question","id":"q-21","q":"AIFlow 的产品定位是什么？","answerable":true,"gold":[{"docId":"product-aiflow","keyword":"工作流引擎"}]}
+{"kind":"question","id":"q-22","q":"工作流执行时会生成什么标识供客户端订阅事件？","answerable":true,"gold":[{"docId":"product-aiflow","keyword":"runId"}]}
+{"kind":"question","id":"q-23","q":"多实例部署需要打开什么来保证同一会话串行？","answerable":true,"gold":[{"docId":"product-aiflow","keyword":"Redis 会话锁"}]}
+{"kind":"question","id":"q-24","q":"AIFlow 使用的向量维度是多少？","answerable":true,"gold":[{"docId":"product-aiflow","keyword":"一千零二十四维"}]}
+{"kind":"question","id":"q-25","q":"运行快照写入哪张表？","answerable":true,"gold":[{"docId":"product-aiflow","keyword":"node_runs"}]}
+{"kind":"question","id":"q-26","q":"文档切片的目标长度是多少字？","answerable":true,"gold":[{"docId":"product-rag","keyword":"四百字"}]}
+{"kind":"question","id":"q-27","q":"默认的相似度阈值是多少？","answerable":true,"gold":[{"docId":"product-rag","keyword":"零点三五"}]}
+{"kind":"question","id":"q-28","q":"动态 top-k 是根据什么来截断的？","answerable":true,"gold":[{"docId":"product-rag","keyword":"断崖"}]}
+{"kind":"question","id":"q-29","q":"MMR 的 lambda 默认值是多少？","answerable":true,"gold":[{"docId":"product-rag","keyword":"零点七"}]}
+{"kind":"question","id":"q-30","q":"提示词中的资料是怎么编号的？","answerable":true,"gold":[{"docId":"product-rag","keyword":"[1][2]"}]}
+{"kind":"question","id":"q-31","q":"主值班需要在多久内响应告警？","answerable":true,"gold":[{"docId":"ops-oncall","keyword":"十五分钟"}]}
+{"kind":"question","id":"q-32","q":"哪一级告警表示核心链路不可用？","answerable":true,"gold":[{"docId":"ops-oncall","keyword":"P0"}]}
+{"kind":"question","id":"q-33","q":"P0 告警长时间未响应会发生什么？","answerable":true,"gold":[{"docId":"ops-oncall","keyword":"升级"}]}
+{"kind":"question","id":"q-34","q":"事故复盘报告需要在多久内提交？","answerable":true,"gold":[{"docId":"ops-oncall","keyword":"三个工作日"}]}
+{"kind":"question","id":"q-35","q":"每年的培训预算有多少？","answerable":true,"gold":[{"docId":"hr-training","keyword":"三千元"}]}
+{"kind":"question","id":"q-36","q":"晋升评审在每年的哪两个月进行？","answerable":true,"gold":[{"docId":"hr-training","keyword":"四月和十月"}]}
+{"kind":"question","id":"q-37","q":"晋升答辩需要提交哪些材料？","answerable":true,"gold":[{"docId":"hr-training","keyword":"项目报告"}]}
+{"kind":"question","id":"q-38","q":"新员工入职首月需要完成哪两门必修课？","answerable":true,"gold":[{"docId":"hr-training","keyword":"安全与合规"}]}
+{"kind":"question","id":"q-39","q":"申请晋升需要连续几个季度绩效达标？","answerable":true,"gold":[{"docId":"hr-training","keyword":"两个季度"}]}
+{"kind":"question","id":"q-40","q":"单笔采购低于多少钱由部门负责人审批？","answerable":true,"gold":[{"docId":"finance-policy","keyword":"一万元"}]}
+{"kind":"question","id":"q-41","q":"新供应商准入需要提交什么材料？","answerable":true,"gold":[{"docId":"finance-policy","keyword":"营业执照"}]}
+{"kind":"question","id":"q-42","q":"合同用印需要在系统提交什么？","answerable":true,"gold":[{"docId":"finance-policy","keyword":"用印申请"}]}
+{"kind":"question","id":"q-43","q":"标准付款周期是多久？","answerable":true,"gold":[{"docId":"finance-policy","keyword":"三十天"}]}
+{"kind":"question","id":"q-44","q":"预付款比例上限是多少？","answerable":true,"gold":[{"docId":"finance-policy","keyword":"百分之三十"}]}
+{"kind":"question","id":"q-45","q":"上班时间是几点，弹性到几点？","answerable":true,"gold":[{"docId":"handbook-attendance","keyword":"九点三十分"}]}
+{"kind":"question","id":"q-46","q":"出差住宿标准是多少，报销要多久内提交？","answerable":true,"gold":[{"docId":"handbook-expense","keyword":"五百元"},{"docId":"handbook-expense","keyword":"三十天内提交报销"}]}
+{"kind":"question","id":"q-47","q":"远程访问内网要注意什么，离职时账号怎么处理？","answerable":true,"gold":[{"docId":"it-security","keyword":"VPN"},{"docId":"it-security","keyword":"十八点"}]}
+{"kind":"question","id":"q-48","q":"P0 告警的响应与升级是怎么规定的？","answerable":true,"gold":[{"docId":"ops-oncall","keyword":"十五分钟"},{"docId":"ops-oncall","keyword":"升级到技术负责人"}]}
+{"kind":"question","id":"q-49","q":"采购金额超过一万元要走什么流程，合同用印怎么申请？","answerable":true,"gold":[{"docId":"finance-policy","keyword":"一万元到五万元"},{"docId":"finance-policy","keyword":"用印申请"}]}
+{"kind":"question","id":"q-50","q":"密码策略要求多少位，多久更换一次？","answerable":true,"gold":[{"docId":"it-security","keyword":"十二位"},{"docId":"it-security","keyword":"九十天"}]}
+{"kind":"question","id":"q-51","q":"检索阈值默认多少，低于阈值的切片会怎样？","answerable":true,"gold":[{"docId":"product-rag","keyword":"零点三五"},{"docId":"product-rag","keyword":"丢弃"}]}
+{"kind":"question","id":"q-52","q":"切片的目标长度是多少，切片之间有多少重叠？","answerable":true,"gold":[{"docId":"product-rag","keyword":"四百字"},{"docId":"product-rag","keyword":"八十字"}]}
+{"kind":"question","id":"q-53","q":"晋升评审在什么时候，答辩要提交什么材料？","answerable":true,"gold":[{"docId":"hr-training","keyword":"四月和十月"},{"docId":"hr-training","keyword":"项目报告"}]}
+{"kind":"question","id":"q-54","q":"工牌补办的费用是多少，需要先做什么？","answerable":true,"gold":[{"docId":"handbook-onboarding","keyword":"二十元"},{"docId":"handbook-onboarding","keyword":"挂失"}]}
+{"kind":"question","id":"q-55","q":"新员工入职首月要完成哪些培训，转正又如何评估？","answerable":true,"gold":[{"docId":"hr-training","keyword":"安全与合规"},{"docId":"handbook-onboarding","keyword":"转正申请"}]}
+{"kind":"question","id":"q-56","q":"公司哪一年在纳斯达克上市？","answerable":false,"gold":[]}
+{"kind":"question","id":"q-57","q":"公司的股票代码是多少？","answerable":false,"gold":[]}
+{"kind":"question","id":"q-58","q":"公司在海外有哪些分公司？","answerable":false,"gold":[]}
+{"kind":"question","id":"q-59","q":"公司的创始人毕业于哪所大学？","answerable":false,"gold":[]}
+{"kind":"question","id":"q-60","q":"公司去年收购了哪家竞争对手？","answerable":false,"gold":[]}
+{"kind":"question","id":"q-61","q":"明天上海的天气怎么样？","answerable":false,"gold":[]}
+{"kind":"question","id":"q-62","q":"番茄炒蛋怎么做？","answerable":false,"gold":[]}
+{"kind":"question","id":"q-63","q":"上一届世界杯冠军是哪支球队？","answerable":false,"gold":[]}
+{"kind":"question","id":"q-64","q":"请推荐三本好看的小说。","answerable":false,"gold":[]}
+{"kind":"question","id":"q-65","q":"珠穆朗玛峰的海拔是多少米？","answerable":false,"gold":[]}
+{"kind":"question","id":"q-66","q":"钢琴考级一共分几级？","answerable":false,"gold":[]}
