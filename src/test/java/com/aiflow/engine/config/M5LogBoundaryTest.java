@@ -4,6 +4,8 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.aiflow.engine.integration.HttpEndpointFactory;
+import com.aiflow.engine.integration.OpenAiCompatibleChatProvider;
+import com.aiflow.engine.provider.EndpointHealth;
 import com.aiflow.engine.retrieval.TieredEmbeddingProvider;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -39,6 +41,10 @@ class M5LogBoundaryTest {
             String output = messages(appender);
             assertThat(output).contains("provider endpoint local 已装配 model=fixture-model tier=local");
             assertThat(output).doesNotContain(PRIVATE_MARKER, "fixture-key", "base-url", "http://");
+
+            OpenAiCompatibleChatProvider provider = new OpenAiCompatibleChatProvider(
+                    "local", endpoint, new EndpointHealth("local", true, 3, 1_000), new ObjectMapper());
+            assertThat(provider.description()).isEqualTo("fixture-model").doesNotContain(PRIVATE_MARKER, "http://");
         } finally {
             detach(logger, appender);
         }

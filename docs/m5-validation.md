@@ -11,7 +11,7 @@
 - 远端 chat provider 不注册、不探活；embedding 远端档位被跳过；本地模型未启动时能力报告为 `unavailable`。
 - 离线 profile 的 loopback 隔离不能由配置开关关闭；大小写不同的 `localhost` 仍按 loopback 处理。
 - `script/verify-m5-offline.ps1` 只使用本机 Maven 缓存和项目测试，不下载模型、不读取或输出云端凭证。
-- provider 装配与 embedding 链的启动日志只保留档位、provider、模型等受控元数据，不记录完整 endpoint 地址、路径、query、userinfo 或凭证；`M5LogBoundaryTest` 用合成 token/key 夹具钉住该边界。
+- provider 装配与 embedding 链的启动日志只保留档位、provider、模型等受控元数据，不记录完整 endpoint 地址、路径、query、userinfo 或凭证；能力描述同样只返回模型名。`M5LogBoundaryTest` 用合成 token/key 夹具钉住该边界。
 
 本轮 `OfflineEgressGuard` 只管理 chat、embedding 和云端知识库 provider。工具、MCP、skills、审批通知/webhook、OCR、对象存储等旁路仍由各自开关控制；因此 `offline` profile 不单独宣称全进程无外网。需要严格无外网运行时，使用既有 offline-engine 启动器，或逐项关闭旁路能力。
 

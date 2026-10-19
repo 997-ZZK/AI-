@@ -105,7 +105,8 @@ public class OpenAiCompatibleChatProvider implements ChatProvider {
 
     @Override
     public String description() {
-        return config.model() + " @ " + config.baseUrl();
+        // 状态诊断可能进入能力 API；base-url 可能带 query/userinfo 形式的凭证，不能暴露。
+        return config.model();
     }
 
     public EndpointHealth health() {
