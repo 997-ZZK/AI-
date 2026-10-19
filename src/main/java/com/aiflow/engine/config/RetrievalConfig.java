@@ -123,10 +123,11 @@ public class RetrievalConfig {
             log.info("embedding 档位 {} 未启用（enabled=false 或 base-url 为空），当前链条只含 {}", skipped,
                     tiers.stream().map(TieredEmbeddingProvider.Tier::name).toList());
         }
-        // 把生效的链条印出来：向量列只记模型名、不记主机，同维不同模型混进一条链是静默错误，
-        // 这份清单是人唯一能一眼看出「localhost 那台其实跑不了 qwen3.7-text-embedding」的地方。
+        // 把生效的链条印出来：向量列只记模型名、不记主机，同维不同模型混进一条链是静默错误。
+        // 日志只保留档位、类型、provider 与模型；base-url 可能带 query/userinfo 形式的凭证，不能落日志。
         log.info("embedding 链条（按优先级）：{}", tiers.stream()
-                .map(item -> item.name() + "[" + item.kind() + "] " + item.provider().id() + " @ " + item.baseUrl())
+                .map(item -> item.name() + "[" + item.kind() + "] " + item.provider().id()
+                        + " model=" + embedding.model())
                 .toList());
         return new TieredEmbeddingProvider("http-embedding:" + embedding.model(), embedding.dimensions(), tiers);
     }

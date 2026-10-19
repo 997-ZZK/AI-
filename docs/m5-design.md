@@ -80,6 +80,13 @@ M5 拆成三个互相解耦的切片：
 - `delete(subjectId)`：可验证删除并使后续确认失效；
 - provider 能力和模型版本只出现在诊断元数据中，声纹向量绝不出现在日志、SSE、运行快照或普通 API 响应。
 
+当前已冻结的纯 Java 契约位于 `src/main/java/com/aiflow/engine/voiceprint/`：
+`VoiceprintProvider`、`VoiceprintSample`、录入/确认/删除结果类型、置信度区间和
+`VoiceprintProviderMetadata`。`VoiceprintProvider.disabled()` 是未配置时的显式安全默认值，
+固定返回 `UNAVAILABLE/DISABLED`；样本字节数组做防御性复制，模板引用只允许作为 provider
+内部的透明句柄存在。该切片没有 Spring bean、HTTP、实时音频、数据库表或迁移，
+也没有把声纹能力接入权限判断。
+
 ### 4.2 访客权限矩阵（初稿）
 
 | 身份状态 | 允许 | 拒绝或降级 |

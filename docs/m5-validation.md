@@ -11,6 +11,7 @@
 - 远端 chat provider 不注册、不探活；embedding 远端档位被跳过；本地模型未启动时能力报告为 `unavailable`。
 - 离线 profile 的 loopback 隔离不能由配置开关关闭；大小写不同的 `localhost` 仍按 loopback 处理。
 - `script/verify-m5-offline.ps1` 只使用本机 Maven 缓存和项目测试，不下载模型、不读取或输出云端凭证。
+- provider 装配与 embedding 链的启动日志只保留档位、provider、模型等受控元数据，不记录完整 endpoint 地址、路径、query、userinfo 或凭证；`M5LogBoundaryTest` 用合成 token/key 夹具钉住该边界。
 
 本轮 `OfflineEgressGuard` 只管理 chat、embedding 和云端知识库 provider。工具、MCP、skills、审批通知/webhook、OCR、对象存储等旁路仍由各自开关控制；因此 `offline` profile 不单独宣称全进程无外网。需要严格无外网运行时，使用既有 offline-engine 启动器，或逐项关闭旁路能力。
 
@@ -22,6 +23,12 @@
 - 只有显式选择 `aiflow.audio.mode=local`、开启 local sidecar、配置 loopback endpoint、通道 provider 和协议 bean 齐全时，才装配本地 provider。
 - endpoint、协议或 sidecar 不可用时能力保持 `unavailable`，不会静默回退 mock；输入 WAV 校验、大小/时长限制、超时、重试、并发和错误边界复用 D1/D2 既有实现。
 - 带版本路径的 base URL（例如 `/v1`）会保留前缀并拼接通道路径；不会因为 URI `resolve` 的文件路径语义丢失版本段。
+
+### M5-C：声纹 provider 契约（仅离线 SPI）
+
+- `VoiceprintProvider` 只冻结指定主体的 1:1 `enroll` / `verify` / `delete` 端口；未配置时由 `disabled` provider 固定返回 `UNAVAILABLE/DISABLED`。
+- 主体标识在共享边界处拒绝空白值；样本字节数组做防御性复制；`SUBJECT_NOT_ENROLLED` 不伪造置信度，模板引用只作为 provider 内部的 opaque 句柄返回并在 `toString()` 中脱敏。
+- 该切片没有真实算法、sidecar/云 API、模板存储、数据库迁移、Spring 装配或权限策略，因此不代表声纹能力已经接通。
 
 ## 自动化验证
 
@@ -40,6 +47,8 @@
 | `OfflineLoopbackE2eIntegrationTest` | 3/3 |
 | `LocalAudioSidecarLoopbackIntegrationTest` | 3/3 |
 | 受影响音频与 M5 组合 | 54/54 |
+| `M5LogBoundaryTest` | 2/2 |
+| `VoiceprintProviderTest` | 8/8 |
 
 第一轮 M5 组合验证为 54/54；此前针对门禁、兼容构造器和 local 协议包装器收口的组合为 85/85。本轮新增 local sidecar loopback 定向回归为 **54/54**；此前加入真实 `offline` profile 启动验收的扩展 M5 回归覆盖 20 个测试类、164 条用例（offline profile、local sidecar、能力接口、EndpointHealth、HTTP 音频协议与传输）：**164/164 通过**。
 

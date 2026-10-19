@@ -622,4 +622,5 @@ GET/PUT/DELETE `/api/v1/users/{userId}/profile` 返回状态与最近30天实时
 - 控制台独立一次性音频面板走 D1 API；`audio-roundtrip` 以既有文本输入验证 TTS→ASR 节点，并只返回文本。不增加外部音频工作流入队、音频下载、跨实例字节传输或持久化入口；音频和 browser Blob 不进入会话/附件/记忆。
 - M5-A 的 `offline` profile 通过 `OfflineEgressGuard` 强制把 chat 与 embedding 的 HTTP 端点限制在 loopback，关闭云端知识库 bean；本地模型未完成首次成功探活前能力报告为 `unavailable`，不把已配置地址当成可用模型。验证入口为 `script/verify-m5-offline.ps1`，不下载或提交模型文件。
 - M5-B 的本地 sidecar 只通过 `LocalAsrProtocol` / `LocalTtsProtocol` 提供厂商无关的请求/响应编码；`AudioConfig` 仅在显式 `mode=local`、loopback endpoint、通道 provider 和协议 bean 均配置时装配 JDK HTTP provider。缺少任一项或 endpoint 非 loopback 时能力保持 `unavailable`，不回退 mock，也不读取协议外的密钥或错误正文。
+- M5-C 当前只冻结 `engine/voiceprint` 的纯 Java `VoiceprintProvider` SPI：只支持指定主体的 1:1 `verify`，结果固定为 `VERIFIED` / `REJECTED` / `UNAVAILABLE` / `INVALID_SAMPLE`，并携带固定原因；完成比对时附归一化置信度区间，`SUBJECT_NOT_ENROLLED` 不伪造分数。主体标识由共享边界校验为非空，未配置时使用显式 `disabled` provider。样本只在调用内存中传递，能力与模型版本仅进入诊断元数据，不创建表、不保存向量、不接入实时音频或权限矩阵。
 - D0 新增 52 条测试；全量 687 条、0 失败、0 错误、1 条真实 embedding 校准跳过，离线打包成功。证据见 [`m4-3d-validation.md`](m4-3d-validation.md)；API、节点、真实厂商和负载验证不属于本次 D0 验收。

@@ -100,8 +100,8 @@ public class TieredEmbeddingProvider implements EmbeddingProvider {
 
     /** kind = local / cloud，只用于状态展示与降级话术。 */
     /**
-     * 一个档位。{@code baseUrl} 只用于启动期把链条印出来 —— 「哪台主机伺候哪个模型」是人肉眼
-     * 唯一能发现的错配（向量列只记模型名，不记主机；同维不同模型的向量混在一起不会报错，只会静默算错相似度）。
+     * 一个档位。{@code baseUrl} 保留在运行时配置对象中供 provider 使用；诊断日志只输出受控元数据，
+     * 不把地址、路径或可能存在于 query/userinfo 中的凭证写入日志。
      */
     public record Tier(String name, String kind, EmbeddingProvider provider, EndpointHealth health, String baseUrl) {
     }

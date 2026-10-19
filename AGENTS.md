@@ -28,6 +28,7 @@ M4-3 的范围、切片顺序和验收见 `docs/m4-3-design.md`；B 契约见 `d
 | `engine/attachment` | 图片附件落盘与 sidecar 元数据 | 图片内容解析（`integration`） |
 | `engine/audio` | 厂商无关的 ASR/TTS 端口、共享调用校验、请求/响应、PCM WAV、运行内临时句柄 | Spring Web、持久化、具体厂商 HTTP |
 | `engine/integration/audio` | mock 与后续获批的厂商语音适配 | 会话/记忆、图片附件存储、运行快照 |
+| `engine/voiceprint` | 厂商无关的声纹 1:1 provider SPI、固定结果语义与非敏感能力元数据 | 真实算法、模板/向量存储、Spring Web、权限矩阵、厂商协议 |
 | `engine/session` | 会话串行队列、会话锁 | 会话业务规则 |
 | `engine/profile` | 画像偏好端口、白名单纯规则和聚合口径 | 原消息/偏好正文副本、Web、JPA |
 | `engine/config` | 配置绑定（`@ConfigurationProperties` 的聚合注册） | 业务默认值（写 `application.yml`） |

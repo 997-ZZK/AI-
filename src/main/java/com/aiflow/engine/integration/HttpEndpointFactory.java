@@ -77,8 +77,10 @@ public class HttpEndpointFactory {
             }
             registerProbe(id, health, endpoint.baseUrl(), endpoint.apiKey(), endpoint.model(), endpoint.probeTimeoutMs());
             chatProviders.put(id, new OpenAiCompatibleChatProvider(id, endpoint, health, objectMapper));
-            log.info("provider endpoint {} 已装配 base-url={} model={} capabilities={}", id, endpoint.baseUrl(),
-                    endpoint.model(), endpoint.capabilities());
+            // base-url 只来自部署配置，可能包含 query/userinfo 形式的凭证。启动日志只保留
+            // 受控元数据，避免把地址、路径或 token 带进日志与诊断产物。
+            log.info("provider endpoint {} 已装配 model={} tier={} capabilities={}", id,
+                    endpoint.model(), tier, endpoint.capabilities());
         }
     }
 
