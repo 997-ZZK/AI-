@@ -13,6 +13,7 @@ import com.aiflow.engine.tool.ToolInvocationGuard;
 import com.aiflow.engine.tool.ToolAuthorizer;
 import com.aiflow.engine.tool.ToolKind;
 import com.aiflow.engine.tool.ToolRegistry;
+import com.aiflow.engine.tool.ToolUrlSummary;
 import com.aiflow.engine.tool.mcp.McpCallException;
 import com.aiflow.engine.tool.mcp.McpServerManager;
 import com.aiflow.engine.tool.mcp.McpToolResult;
@@ -322,7 +323,7 @@ public class ToolCallNodeExecutor implements NodeExecutor {
         output.put("toolId", tool.id());
         output.put("kind", "http");
         output.put("method", tool.method());
-        output.put("url", uri.toString());
+        output.put("url", ToolUrlSummary.describe(uri));
         output.put("httpStatus", httpStatus);
         output.put("body", body);
         if (truncated) {
@@ -377,7 +378,8 @@ public class ToolCallNodeExecutor implements NodeExecutor {
         try {
             return URI.create(url);
         } catch (IllegalArgumentException e) {
-            throw new ToolBlockedException("工具 url 无法解析: " + url);
+            // URL 可能含模板渲染后的 query/token；错误会进入节点快照与 HTTP 响应，不能回显原文。
+            throw new ToolBlockedException("工具 url 无法解析");
         }
     }
 

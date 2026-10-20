@@ -69,6 +69,13 @@ class ToolsApiIntegrationTest {
     @DynamicPropertySource
     static void tools(DynamicPropertyRegistry registry) {
         registry.add("aiflow.tools.enabled", () -> "true");
+        registry.add("aiflow.tools.allow-hosts[0]", () -> "127.0.0.1");
+        registry.add("aiflow.tools.allow-private-hosts[0]", () -> "127.0.0.1");
+        registry.add("aiflow.tools.registry.api-http.enabled", () -> "true");
+        registry.add("aiflow.tools.registry.api-http.description", () -> "接口测试 HTTP 工具");
+        registry.add("aiflow.tools.registry.api-http.method", () -> "GET");
+        registry.add("aiflow.tools.registry.api-http.url",
+                () -> "http://127.0.0.1/api/tools?token=private-tools-api-marker#fragment");
         registry.add("aiflow.tools.skills.enabled", () -> "true");
         registry.add("aiflow.tools.skills.roots[0]", SKILL_ROOT::toString);
         registry.add("aiflow.tools.mcp.enabled", () -> "true");
@@ -89,8 +96,18 @@ class ToolsApiIntegrationTest {
             ids.add(tool.path("id").asText());
             kinds.add(tool.path("kind").asText());
         });
-        assertThat(ids).contains("skill.list", "skill.read");
+        assertThat(ids).contains("skill.list", "skill.read", "api-http");
         assertThat(kinds).contains("skill");
+        JsonNode tool = data.path("tools").findValues("id").stream()
+                .filter(id -> id.asText().equals("api-http"))
+                .findFirst().orElseThrow();
+        assertThat(tool.asText()).isEqualTo("api-http");
+        data.path("tools").forEach(candidate -> {
+            if (candidate.path("id").asText().equals("api-http")) {
+                assertThat(candidate.path("url").asText()).isEqualTo("http://127.0.0.1/api/tools");
+                assertThat(candidate.toString()).doesNotContain("private-tools-api-marker", "fragment", "token=");
+            }
+        });
         // 不起的服务端不进白名单，但必须留下可读的原因
         assertThat(ids).noneMatch(id -> id.startsWith("mcp.api-broken"));
         assertThat(data.path("mcp").path("enabled").asBoolean()).isTrue();
@@ -108,7 +125,7 @@ class ToolsApiIntegrationTest {
 
         assertThat(data.path("skills").asInt()).isGreaterThanOrEqualTo(1);
         assertThat(data.path("mcpFailures").has("api-broken")).isTrue();
-        assertThat(data.path("toolCount").asInt()).isEqualTo(2);
+        assertThat(data.path("toolCount").asInt()).isEqualTo(3);
     }
 
     private JsonNode call(org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request)

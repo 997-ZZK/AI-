@@ -1,6 +1,6 @@
 # M4-3D D0 验证记录
 
-2026-10-13：**D0 已交付并验收；整个 M4-3D 尚未完成**。本次包含厂商无关的 ASR/TTS 端口、PCM WAV 校验、mock 实现、独立配置和能力报告。D1 同步音频 API、D2 工作流节点/控制台与真实厂商适配后续分别确认，方案见 [`m4-3d-plan.md`](m4-3d-plan.md)。
+2026-10-13：**D0 历史切片已交付并验收**。本记录只保留 D0 的端口、校验、mock、独立配置和能力报告证据；D1 同步音频 API 已在 [`m4-3d-d1-validation.md`](m4-3d-d1-validation.md) 验收，D2 工作流节点/控制台已在 [`m4-3d-d2-validation.md`](m4-3d-d2-validation.md) 验收。真实厂商适配仍按 [`m4-3d-plan.md`](m4-3d-plan.md) 后置。
 
 ## 交付与边界
 

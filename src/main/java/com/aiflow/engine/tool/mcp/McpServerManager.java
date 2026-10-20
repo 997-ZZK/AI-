@@ -2,6 +2,7 @@ package com.aiflow.engine.tool.mcp;
 
 import com.aiflow.engine.common.Hashes;
 import com.aiflow.engine.tool.SsrfGuard;
+import com.aiflow.engine.tool.ToolUrlSummary;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -12,6 +13,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import java.net.URI;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -21,6 +23,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.LockSupport;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * MCP 服务端生命周期 + 工具发现（stdio / Streamable HTTP / 老式 SSE 三种传输共用这一套装配逻辑）。
@@ -47,6 +51,7 @@ public class McpServerManager implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(McpServerManager.class);
     private static final long DRAIN_POLL_NANOS = 25_000_000L;
+    private static final Pattern URI_TOKEN = Pattern.compile("(?i)https?://[^\\s\\]\\[\\)\\}\\\",;]+(?:\\?[^\\s\\]\\[\\)\\}\\\",;]*)?");
 
     private final McpToolProperties properties;
     private final McpConfigImporter importer;
@@ -127,11 +132,20 @@ public class McpServerManager implements AutoCloseable {
                     case HTTP, SSE -> remoteConfig(server, transport);
                 });
             } catch (RuntimeException e) {
-                failures.put(server.id(), e.getMessage());
-                log.warn("MCP 服务端 {} 配置无法使用：{}", server.id(), e.getMessage());
+                String reason = safeFailure(e.getMessage(), server.url());
+                failures.put(server.id(), reason);
+                log.warn("MCP 服务端 {} 配置无法使用：{}", server.id(), reason);
             }
         }
-        servers.addAll(importer.load(properties));
+        try {
+            servers.addAll(importer.load(properties));
+        } catch (RuntimeException e) {
+            // 一个导入文件里的坏端点不能让整个 manager 的 reload 失败；同时不能把导入配置中的
+            // userinfo/query/fragment 带进 /api/v1/tools 的 failures。
+            String reason = safeFailure(e.getMessage(), (String) null);
+            failures.put("import", reason);
+            log.warn("MCP 导入配置无法使用：{}", reason);
+        }
         Map<String, McpServerConfig> deduped = new LinkedHashMap<>();
         for (McpServerConfig server : servers) {
             if (deduped.putIfAbsent(server.id(), server) != null) {
@@ -175,8 +189,9 @@ public class McpServerManager implements AutoCloseable {
         try {
             managed = newManagedClient(config);
         } catch (RuntimeException e) {
-            failures.put(config.id(), e.getMessage());
-            log.warn("MCP 服务端 {} 不可用，跳过：{}", config.id(), e.getMessage());
+            String reason = safeFailure(e.getMessage(), config.url());
+            failures.put(config.id(), reason);
+            log.warn("MCP 服务端 {} 不可用，跳过：{}", config.id(), reason);
             return;
         }
         try {
@@ -209,8 +224,9 @@ public class McpServerManager implements AutoCloseable {
                     config.transport().wireName(), discovered.size(),
                     discovered.stream().map(McpToolDescriptor::name).toList(), managed.version);
         } catch (RuntimeException e) {
-            failures.put(config.id(), e.getMessage());
-            log.warn("MCP 服务端 {} 不可用，跳过：{}", config.id(), e.getMessage());
+            String reason = safeFailure(e.getMessage(), config.url());
+            failures.put(config.id(), reason);
+            log.warn("MCP 服务端 {} 不可用，跳过：{}", config.id(), reason);
             managed.client.close();
         }
     }
@@ -304,7 +320,7 @@ public class McpServerManager implements AutoCloseable {
             item.put("id", config.id());
             item.put("transport", config.transport().wireName());
             item.put("source", config.source());
-            item.put("url", config.url() == null ? null : config.url().toString());
+            item.put("url", safeEndpoint(config.url()));
             item.put("tools", managed.tools.stream().map(McpToolDescriptor::name).toList());
             item.put("version", managed.version);
             item.put("generation", generation.get());
@@ -314,6 +330,44 @@ public class McpServerManager implements AutoCloseable {
             snapshots.add(item);
         }
         return snapshots;
+    }
+
+    /**
+     * 端点只在诊断输出中出现安全摘要：协议、host、显式端口和路径。
+     * userinfo、query、fragment 都可能承载凭证或一次性令牌，不能进入快照/API。
+     */
+    static String safeEndpoint(URI endpoint) {
+        return ToolUrlSummary.describe(endpoint);
+    }
+
+    static String safeEndpoint(String rawEndpoint) {
+        if (rawEndpoint == null || rawEndpoint.isBlank()) {
+            return "远程端点（地址无效）";
+        }
+        try {
+            return safeEndpoint(URI.create(rawEndpoint.strip()));
+        } catch (IllegalArgumentException ignored) {
+            return "远程端点（地址无效）";
+        }
+    }
+
+    /** 兼容旧异常消息：仅在进入 failures/log 之前做一次 URL 级别的兜底脱敏。 */
+    static String safeFailure(String message, URI configuredEndpoint) {
+        return safeFailure(message, configuredEndpoint == null ? null : configuredEndpoint.toString());
+    }
+
+    static String safeFailure(String message, String configuredEndpoint) {
+        String safe = message == null || message.isBlank() ? "未知错误" : message;
+        if (configuredEndpoint != null && !configuredEndpoint.isBlank()) {
+            safe = safe.replace(configuredEndpoint.strip(), safeEndpoint(configuredEndpoint));
+        }
+        Matcher matcher = URI_TOKEN.matcher(safe);
+        StringBuffer redacted = new StringBuffer();
+        while (matcher.find()) {
+            matcher.appendReplacement(redacted, Matcher.quoteReplacement(safeEndpoint(matcher.group())));
+        }
+        matcher.appendTail(redacted);
+        return redacted.toString();
     }
 
     /** 引擎内的工具 id：默认 {@code mcp.<serverId>.<toolName>}。 */

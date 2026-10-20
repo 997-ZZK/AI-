@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -185,6 +186,49 @@ class McpServerManagerTest {
             assertThat(server.toolCallCount()).isEqualTo(1);
             manager.close();
         }
+    }
+
+    @Test
+    void serverSnapshotDropsEndpointCredentialsQueryAndFragment() throws IOException {
+        try (FakeMcpHttpServerMain server = FakeMcpHttpServerMain.start(false, null, false, true)) {
+            String marker = "private-mcp-token";
+            McpServerManager manager = manager(ssrfGuard(server.port(), true),
+                    httpServer("remote", server.url() + "?token=" + marker + "#fragment"));
+
+            assertThat(manager.failures()).isEmpty();
+            assertThat(manager.serverSnapshots().get(0))
+                    .containsEntry("url", server.url())
+                    .doesNotContainValue(marker)
+                    .doesNotContainValue("fragment");
+            manager.close();
+        }
+    }
+
+    @Test
+    void endpointSummaryDropsUserInfoQueryAndFragment() {
+        assertThat(McpServerManager.safeEndpoint(URI.create(
+                "https://user:password@example.com:8443/mcp?token=private-marker#fragment")))
+                .isEqualTo("https://example.com:8443/mcp");
+    }
+
+    @Test
+    void failureSummaryDropsEmbeddedEndpointCredentialsAndQuery() {
+        String message = "连接失败 https://user:password@example.com/mcp?token=private-marker#fragment";
+
+        assertThat(McpServerManager.safeFailure(message, (String) null))
+                .contains("https://example.com/mcp")
+                .doesNotContain("user", "password", "private-marker", "fragment");
+    }
+
+    @Test
+    void invalidEndpointFailureDoesNotEchoConfiguredUrl() {
+        String marker = "private-mcp-token";
+        McpServerManager manager = manager(httpServer("remote", "http://[broken?token=" + marker));
+
+        assertThat(manager.failures().get("remote"))
+                .contains("url 无法解析")
+                .doesNotContain(marker);
+        manager.close();
     }
 
     @Test

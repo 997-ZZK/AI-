@@ -396,6 +396,9 @@ HTTP 形态**每次请求都过一次 `SsrfGuard`**：注册时那一遍只证�
 **明确失败并提示重新发现**，而不是把旧参数发往已经变了的接口。`GET /api/v1/tools` 的 `mcp.servers` 里能看到
 `version` / `generation` / `loadedAt` / `auth` / `inFlight`，排障时不必猜「这个服务端现在是不是我刚改的那份」。
 
+诊断出口里的外部地址只保留协议、host、显式端口和 path；userinfo、query、fragment 一律剥离。HTTP 工具的实际请求仍使用
+渲染后的原始 URI，MCP 客户端也仍按原始配置连接，脱敏只发生在工具清单、运行快照、失败原因和节点输出，避免把一次性令牌或用户参数写进持久化诊断。
+
 配置导入（Codex 的 `[mcp_servers.*]`、Claude 的 `mcpServers`）是为了降低接入成本：本机已经装好的 Agent 工具链，
 填一个路径就能进白名单，不必手抄一遍命令。导入项与手工声明合并，id 加前缀区分来源（`codex-` / `claude-`）。
 

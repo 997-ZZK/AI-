@@ -147,8 +147,8 @@ public class VisionNodeExecutor implements NodeExecutor {
             Map<String, Object> output = new LinkedHashMap<>();
             output.put("reply", outcome.response().content());
             output.put("imageCount", images.size());
-            // 只留引用，不留 base64：否则 node_runs 快照会膨胀成图片仓库
-            output.put("imageRefs", tokens);
+            // 只留可诊断引用，不留 base64、userinfo 或 query token：否则 node_runs 快照会变成图片仓库/凭证仓库。
+            output.put("imageRefs", diagnosticRefs(tokens));
             output.putAll(DegradationTrace.describe(outcome));
             // 图片也按 token 计费（多模态输入的 token 通常比文本贵），同样在返回后、审核前扣减
             long usedTokens = outcome.response().promptTokens() + outcome.response().completionTokens();
@@ -175,18 +175,29 @@ public class VisionNodeExecutor implements NodeExecutor {
     }
 
     private ChatImage resolve(String token) {
-        if (token.startsWith("http://") || token.startsWith("https://")) {
+        if (token.regionMatches(true, 0, "http://", 0, 7)
+                || token.regionMatches(true, 0, "https://", 0, 8)) {
             return ChatImage.ofUrl(token);
         }
         UUID id;
         try {
             id = UUID.fromString(token);
         } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("无法识别的图片引用：" + token + "（只接受 attachmentId 或 http(s) 直链）");
+            throw new IllegalArgumentException("无法识别的图片引用（只接受 attachmentId 或 http(s) 直链）");
         }
         AttachmentStore.Loaded loaded = attachmentStore.load(id);
         log.info("vision resolved attachment id={} mime={} bytes={}", id, loaded.mimeType(), loaded.bytes().length);
         return ChatImage.ofBytes(loaded.mimeType(), loaded.bytes());
+    }
+
+    private static List<String> diagnosticRefs(List<String> tokens) {
+        return tokens.stream().map(token -> {
+            if (token.regionMatches(true, 0, "http://", 0, 7)
+                    || token.regionMatches(true, 0, "https://", 0, 8)) {
+                return ChatImage.ofUrl(token).summary();
+            }
+            return token;
+        }).toList();
     }
 
     private static List<String> splitRefs(String refs) {

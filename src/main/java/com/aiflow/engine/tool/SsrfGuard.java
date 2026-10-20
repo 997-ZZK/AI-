@@ -55,7 +55,7 @@ public class SsrfGuard {
         try {
             uri = URI.create(rawUrl.strip());
         } catch (IllegalArgumentException e) {
-            throw new ToolBlockedException("工具 url 无法解析: " + rawUrl);
+            throw new ToolBlockedException("工具 url 无法解析");
         }
         String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
         if (!"http".equals(scheme) && !"https".equals(scheme)) {
@@ -66,7 +66,7 @@ public class SsrfGuard {
         }
         String host = uri.getHost();
         if (host == null || host.isBlank()) {
-            throw new ToolBlockedException("工具 url 缺少 host: " + rawUrl);
+            throw new ToolBlockedException("工具 url 缺少 host");
         }
         int port = uri.getPort() < 0 ? ("https".equals(scheme) ? 443 : 80) : uri.getPort();
         if (!properties.allowPorts().contains(port)) {

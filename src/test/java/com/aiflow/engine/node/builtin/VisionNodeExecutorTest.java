@@ -70,13 +70,17 @@ class VisionNodeExecutorTest {
         ProviderRouter router = router(new StubProvider("cloud-vl",
                 Set.of(Capabilities.CHAT, Capabilities.VISION), seen));
         Map<String, Object> variables = new HashMap<>(Map.of(
-                "input", "这是什么", "attachments", "https://cdn.example.com/a.png"));
+                "input", "这是什么", "attachments",
+                "https://user:password@cdn.example.com/a.png?token=private-marker#fragment"));
 
         NodeResult result = executor(router, store(4)).execute(newContext(Map.of(), variables));
 
         assertThat(result.status()).isEqualTo(NodeRunStatus.SUCCEEDED);
         assertThat(seen.get().messages().get(0).images().get(0).url())
-                .isEqualTo("https://cdn.example.com/a.png");
+                .isEqualTo("https://user:password@cdn.example.com/a.png?token=private-marker#fragment");
+        assertThat(result.output().get("imageRefs").toString())
+                .contains("https://cdn.example.com")
+                .doesNotContain("user", "password", "private-marker", "fragment");
     }
 
     @Test
@@ -91,14 +95,16 @@ class VisionNodeExecutorTest {
 
     @Test
     void failsWhenReferenceIsNeitherAttachmentNorLink() {
-        Map<String, Object> variables = new HashMap<>(Map.of("input", "图里有什么", "attachments", "not-a-uuid"));
+        String privateMarker = "not-a-uuid-private-marker";
+        Map<String, Object> variables = new HashMap<>(Map.of("input", "图里有什么", "attachments", privateMarker));
 
         NodeResult result = executor(router(new StubProvider("cloud-vl",
                 Set.of(Capabilities.CHAT, Capabilities.VISION), new AtomicReference<>())), store(4))
                 .execute(newContext(Map.of(), variables));
 
         assertThat(result.status()).isEqualTo(NodeRunStatus.FAILED);
-        assertThat(result.error()).contains("无法识别的图片引用");
+        assertThat(result.error()).isEqualTo("无法识别的图片引用（只接受 attachmentId 或 http(s) 直链）")
+                .doesNotContain(privateMarker);
     }
 
     @Test

@@ -129,7 +129,8 @@ public record McpServerConfig(
         try {
             uri = URI.create(url.strip());
         } catch (IllegalArgumentException e) {
-            throw new McpCallException("MCP " + form + " 服务端 " + id + " 的 url 无法解析: " + url);
+            // 原始地址可能含 userinfo/query/fragment 形式的凭证；配置错误只保留固定分类。
+            throw new McpCallException("MCP " + form + " 服务端 " + id + " 的 url 无法解析");
         }
         String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
         if (!"http".equals(scheme) && !"https".equals(scheme)) {
@@ -137,7 +138,7 @@ public record McpServerConfig(
                     + (scheme.isEmpty() ? "(空)" : scheme));
         }
         if (uri.getHost() == null || uri.getHost().isBlank()) {
-            throw new McpCallException("MCP " + form + " 服务端 " + id + " 的 url 缺少 host: " + url);
+            throw new McpCallException("MCP " + form + " 服务端 " + id + " 的 url 缺少 host");
         }
         return uri;
     }

@@ -92,6 +92,19 @@ class SsrfGuardTest {
     }
 
     @Test
+    void malformedUrlDiagnosticsDoNotEchoQueryCredentials() {
+        SsrfGuard guard = guard(List.of("api.example.com"), List.of(), List.of(80, 443), publicResolver());
+        String marker = "private-ssrf-query-marker";
+
+        assertThatThrownBy(() -> guard.validate("https://api.example.com/%zz?token=" + marker))
+                .hasMessage("工具 url 无法解析")
+                .hasMessageNotContaining(marker);
+        assertThatThrownBy(() -> guard.validate("https:///missing-host?token=" + marker))
+                .hasMessage("工具 url 缺少 host")
+                .hasMessageNotContaining(marker);
+    }
+
+    @Test
     void wildcardMatchesSubdomainButNotApexOrSuffixTrick() {
         SsrfGuard guard = guard(List.of("*.example.com"), List.of(), List.of(80, 443), publicResolver());
 

@@ -4,6 +4,7 @@ import com.aiflow.engine.common.api.ApiResponse;
 import com.aiflow.engine.config.ToolPolicyProperties;
 import com.aiflow.engine.tool.ToolAuthorizer;
 import com.aiflow.engine.tool.ToolRegistry;
+import com.aiflow.engine.tool.ToolUrlSummary;
 import com.aiflow.engine.tool.audit.ToolAuditEvent;
 import com.aiflow.engine.tool.audit.ToolAuditService;
 import com.aiflow.engine.tool.mcp.McpServerManager;
@@ -189,7 +190,7 @@ public class ToolController {
         item.put("idempotent", tool.idempotent());
         if (tool.definition() != null) {
             item.put("method", tool.method());
-            item.put("url", tool.uri() == null ? null : tool.uri().toString());
+            item.put("url", ToolUrlSummary.describe(tool.uri()));
         }
         if (tool.mcp() != null) {
             item.put("serverId", tool.mcp().serverId());

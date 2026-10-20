@@ -30,4 +30,4 @@
 - 脱敏快照：`target/m4-3d/d1-delivery-20261013.json`
   - 记录测试汇总、套件结果、产物/日志/源码路径和 SHA256；不保存音频、转写/合成正文、请求体、运行属性、厂商原文或凭证。
 
-本轮未读取真实百炼 key、未访问真实厂商、未修改 `.env` 或数据库 schema、未运行 Gatling。D2 的 `asr.transcribe` / `tts.speak` 节点、控制台和真实厂商适配仍待后续单独确认。
+本轮未读取真实百炼 key、未访问真实厂商、未修改 `.env` 或数据库 schema、未运行 Gatling。D2 的 `asr.transcribe` / `tts.speak` 节点与控制台已在 [`m4-3d-d2-validation.md`](m4-3d-d2-validation.md) 单独验收；真实厂商适配仍待后续资料齐全后确认。

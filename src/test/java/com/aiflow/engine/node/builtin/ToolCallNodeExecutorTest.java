@@ -103,6 +103,20 @@ class ToolCallNodeExecutorTest {
     }
 
     @Test
+    void successOutputDoesNotExposeQueryCredentials() {
+        String marker = "private-tool-query-marker";
+        ToolProperties.Tool tool = getTool(toolUrl + "?token=" + marker);
+        NodeContext context = context(Map.of("tool", "echo-get"), new HashMap<>());
+
+        NodeResult result = executor(properties(Map.of("echo-get", tool), 8, 3)).execute(context);
+
+        assertThat(result.status()).isEqualTo(NodeRunStatus.SUCCEEDED);
+        assertThat(result.output().get("url")).isEqualTo(toolUrl);
+        assertThat(String.valueOf(result.output())).doesNotContain(marker, "token=");
+        assertThat(CALLS.get()).isEqualTo(1);
+    }
+
+    @Test
     void httpErrorBecomesNodeFailureWithSnippet() {
         responseStatus = 500;
         responseBody = "upstream boom";
@@ -220,7 +234,11 @@ class ToolCallNodeExecutorTest {
     }
 
     private static ToolProperties.Tool getTool() {
-        return new ToolProperties.Tool("回显 GET", "GET", toolUrl, Map.of(), true, "content");
+        return getTool(toolUrl);
+    }
+
+    private static ToolProperties.Tool getTool(String url) {
+        return new ToolProperties.Tool("回显 GET", "GET", url, Map.of(), true, "content");
     }
 
     private static ToolProperties.Tool postTool(String idempotency) {

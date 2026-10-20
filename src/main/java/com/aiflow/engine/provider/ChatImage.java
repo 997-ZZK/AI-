@@ -1,5 +1,6 @@
 package com.aiflow.engine.provider;
 
+import java.net.URI;
 import java.util.Base64;
 import java.util.Locale;
 
@@ -20,15 +21,13 @@ import java.util.Locale;
 public record ChatImage(String url) {
 
     private static final String BASE64_MARKER = ";base64,";
-    private static final int PREVIEW_LIMIT = 48;
-
     public ChatImage {
         if (url == null || url.isBlank()) {
             throw new IllegalArgumentException("图片引用为空");
         }
         url = url.strip();
         if (!isSupported(url)) {
-            throw new IllegalArgumentException("不支持的图片引用（只接受 http(s) 直链或 data:image base64）: " + preview(url));
+            throw new IllegalArgumentException("不支持的图片引用（只接受 http(s) 直链或 data:image base64）");
         }
     }
 
@@ -63,7 +62,7 @@ public record ChatImage(String url) {
 
     /** 可安全写进日志的摘要。 */
     public String summary() {
-        return inline() ? mediaType() + " inline（" + url.length() + " 字符）" : url;
+        return inline() ? mediaType() + " inline（" + url.length() + " 字符）" : externalSummary();
     }
 
     @Override
@@ -79,7 +78,17 @@ public record ChatImage(String url) {
         return lower.startsWith("data:image/") && lower.contains(BASE64_MARKER);
     }
 
-    private static String preview(String url) {
-        return url.length() <= PREVIEW_LIMIT ? url : url.substring(0, PREVIEW_LIMIT) + "…";
+    private String externalSummary() {
+        try {
+            URI parsed = URI.create(url);
+            String host = parsed.getHost();
+            if (host != null) {
+                return parsed.getScheme().toLowerCase(Locale.ROOT) + "://" + host
+                        + "（外部图片，" + url.length() + " 字符）";
+            }
+        } catch (IllegalArgumentException ignored) {
+            // 形态校验只保证 http(s) 前缀；解析失败时仍返回固定摘要，不能回显原始 URL。
+        }
+        return "外部图片（" + url.length() + " 字符）";
     }
 }

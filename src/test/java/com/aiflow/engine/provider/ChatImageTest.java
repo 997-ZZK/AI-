@@ -50,4 +50,22 @@ class ChatImageTest {
         assertThat(image.toString()).contains("image/jpeg").contains("inline");
         assertThat(image.toString()).doesNotContain(Base64.getEncoder().encodeToString(PNG));
     }
+
+    @Test
+    void externalSummaryNeverLeaksUrlCredentialsOrQuery() {
+        String privateUrl = "https://user:password@cdn.example.com/a.png?token=private-marker#fragment";
+        ChatImage image = ChatImage.ofUrl(privateUrl);
+
+        assertThat(image.summary()).contains("https://cdn.example.com");
+        assertThat(image.toString()).doesNotContain("user", "password", "private-marker", "fragment", privateUrl);
+    }
+
+    @Test
+    void invalidReferenceErrorDoesNotEchoCallerInput() {
+        String privateMarker = "file:///private-marker/secret.txt";
+
+        assertThatThrownBy(() -> ChatImage.ofUrl(privateMarker))
+                .hasMessage("不支持的图片引用（只接受 http(s) 直链或 data:image base64）")
+                .hasMessageNotContaining(privateMarker);
+    }
 }
